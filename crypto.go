@@ -83,7 +83,7 @@ func decryptBlob(token []byte, body []byte, key []byte) (*secret, error) {
 		blockCipher, ciphertext.getInitVector(),
 	)
 
-	paddedToken := make([]byte, blockCipher.BlockSize())
+	paddedToken := make([]byte, len(token))
 	decrypter.XORKeyStream(paddedToken, token)
 
 	tokenMAC := make([]byte, ciphertext.getHMACSize())
@@ -135,7 +135,7 @@ func encryptBlob(
 		blockCipher, ciphertext.getInitVector(),
 	)
 
-	encryptedToken = make([]byte, blockCipher.BlockSize())
+	encryptedToken = make([]byte, len(paddedToken))
 	encrypter.XORKeyStream(encryptedToken, paddedToken)
 
 	tokenMAC, err := calcHMAC(ciphertext.HMAC, token, key)
