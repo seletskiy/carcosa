@@ -10,6 +10,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
+
+	"github.com/seletskiy/hierr"
 )
 
 type secret struct {
@@ -68,7 +70,7 @@ var (
 func decryptBlob(token []byte, body []byte, key []byte) (*secret, error) {
 	blockCipher, err := newCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("can't initialize AES: %s", err)
+		return nil, hierr.Errorf(err, "can't initialize AES")
 	}
 
 	ciphertext := blob{
@@ -113,7 +115,7 @@ func encryptBlob(
 ) (encryptedToken []byte, ciphertext *blob, err error) {
 	blockCipher, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, nil, fmt.Errorf("can't initialize AES: %s", err)
+		return nil, nil, hierr.Errorf(err, "can't initialize AES")
 	}
 
 	ciphertext = &blob{
@@ -124,7 +126,7 @@ func encryptBlob(
 	ciphertext.init(plaintext)
 
 	if _, err = rand.Read(ciphertext.getInitVector()); err != nil {
-		return nil, nil, fmt.Errorf("can't create IV for cipher: %s", err)
+		return nil, nil, hierr.Errorf(err, "can't create IV for cipher")
 	}
 
 	paddedToken := padBytes([]byte(token), blockCipher.BlockSize())
@@ -154,8 +156,9 @@ func calcHMAC(
 
 	_, err := mac.Write(token)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"can't calculate HMAC for token '%s': %s", token, err,
+		return nil, hierr.Errorf(
+			err,
+			"can't calculate HMAC for token '%s'", token,
 		)
 	}
 

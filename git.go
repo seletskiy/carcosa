@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/seletskiy/hierr"
 )
 
 type git struct {
@@ -24,8 +26,9 @@ func (repo *git) updateRef(refName string, pointer string) error {
 		"git", "update-ref", refName, pointer,
 	).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf(
-			"error executing git update-ref: %s\n%s", err, output,
+		return hierr.Errorf(
+			err,
+			"error executing git update-ref\n%s", bytes.TrimSpace(output),
 		)
 	}
 
@@ -37,8 +40,9 @@ func (repo *git) removeRef(refName string) error {
 		"git", "update-ref", "-d", refName,
 	).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf(
-			"error executing git update-ref -d: %s\n%s", err, output,
+		return hierr.Errorf(
+			err,
+			"error executing git update-ref -d\n%s", bytes.TrimSpace(output),
 		)
 	}
 
@@ -52,41 +56,43 @@ func (repo *git) writeObject(data []byte) (string, error) {
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return "", fmt.Errorf("can't get stdin for git hash-object: %s", err)
+		return "", hierr.Errorf(err, "can't get stdin for git hash-object")
 	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", fmt.Errorf("can't get stdout for git hash-object: %s", err)
+		return "", hierr.Errorf(err, "can't get stdout for git hash-object")
 	}
 
 	err = cmd.Start()
 	if err != nil {
-		return "", fmt.Errorf(
-			"can't run git hash-object: %s", err,
+		return "", hierr.Errorf(
+			err,
+			"can't run git hash-object",
 		)
 	}
 
 	_, err = stdin.Write(data)
 	if err != nil {
-		return "", fmt.Errorf("can't write data to git hash-object: %s", err)
+		return "", hierr.Errorf(err, "can't write data to git hash-object")
 	}
 
 	err = stdin.Close()
 	if err != nil {
-		return "", fmt.Errorf("can't close git hash-object stdin: %s", err)
+		return "", hierr.Errorf(err, "can't close git hash-object stdin")
 	}
 
 	output, err := ioutil.ReadAll(stdout)
 	if err != nil {
-		return "", fmt.Errorf(
-			"can't read git hash-object result: %s", err,
+		return "", hierr.Errorf(
+			err,
+			"can't read git hash-object result",
 		)
 	}
 
 	err = cmd.Wait()
 	if err != nil {
-		return "", fmt.Errorf("can't wait for git hash-object: %s", err)
+		return "", hierr.Errorf(err, "can't wait for git hash-object")
 	}
 
 	return strings.TrimSpace(string(output)), nil
@@ -97,8 +103,9 @@ func (repo *git) listRefs(namespace string) ([]ref, error) {
 		repo.path, "git", "show-ref",
 	).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf(
-			"error executing git show-ref: %s\n%s", err, output,
+		return nil, hierr.Errorf(
+			err,
+			"error executing git show-ref\n%s", bytes.TrimSpace(output),
 		)
 	}
 
@@ -109,7 +116,7 @@ func (repo *git) listRefs(namespace string) ([]ref, error) {
 
 		_, err := fmt.Sscanf(scanner.Text(), "%s %s", &hash, &name)
 		if err != nil {
-			return nil, fmt.Errorf("can't read from git show-ref: %s", err)
+			return nil, hierr.Errorf(err, "can't read from git show-ref")
 		}
 
 		if !strings.HasPrefix(name, namespace) {
@@ -146,8 +153,9 @@ func (repo *git) clone(remote string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf(
-			"can't run git clone '%s' -> '%s': %s", remote, repo.path, err,
+		return hierr.Errorf(
+			err,
+			"can't run git clone '%s' -> '%s'", remote, repo.path,
 		)
 	}
 
@@ -164,8 +172,9 @@ func (repo *git) fetch(remote string, ref string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf(
-			"can't run git fetch '%s' '%s': %s", remote, ref, err,
+		return hierr.Errorf(
+			err,
+			"can't run git fetch '%s' '%s'", remote, ref,
 		)
 	}
 
@@ -182,8 +191,9 @@ func (repo *git) push(remote string, ref string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf(
-			"can't run git push '%s' '%s': %s", remote, ref, err,
+		return hierr.Errorf(
+			err,
+			"can't run git push '%s' '%s'", remote, ref,
 		)
 	}
 
@@ -195,8 +205,9 @@ func (repo *git) catFile(hash string) ([]byte, error) {
 		repo.path, "git", "cat-file", "-p", hash,
 	).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf(
-			"error executing git cat-file: %s\n%s", err, output,
+		return nil, hierr.Errorf(
+			err,
+			"error executing git cat-file\n%s", bytes.TrimSpace(output),
 		)
 	}
 

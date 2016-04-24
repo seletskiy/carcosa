@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/docopt/docopt-go"
+	"github.com/seletskiy/hierr"
 )
 
 var globalMasterKey []byte
@@ -22,7 +23,14 @@ const tokenHashDelimiter = "::"
 
 const usage = `$0 - git-backed secrets storage.
 
-<TBD>
+Tool provides a way of storing arbitrary data inside encrypted git objects.
+
+Encryption is done via AES cypher.
+
+Each encrypted data object can be referenced via non-unique name, which is
+called token. Tokens are encrypted as well.
+
+Encrypted data objects are linked to git refs
 
 Usage:
     $0 [options] -h | --help
@@ -57,7 +65,9 @@ Options:
     -c           Use cache for master password. Master password will be
                    encrypted using unique encryption key for current machine.
     -f <cache>   Cache file for master password.
-                   [default: ~/.config/carcossa/master]
+                   [default: ~/.config/carcosa/master]
+    -k <file>    Read master key from specified file. WARNING: that can be
+                   unsecure; use of fifo pipe as a file is preferable.
     -e <editor>  Use specified editor for modifying secret in place.
                    [default: $EDITOR]
 `
@@ -67,7 +77,7 @@ func main() {
 	usage = strings.Replace(usage, "~/", os.Getenv("HOME")+"/", -1)
 	usage = strings.Replace(usage, "$EDITOR", os.Getenv("EDITOR"), -1)
 
-	args, err := docopt.Parse(usage, nil, true, "1.0", false)
+	args, err := docopt.Parse(usage, nil, true, "1", false)
 	if err != nil {
 		panic(err)
 	}
@@ -103,12 +113,12 @@ func addSecret(args map[string]interface{}) error {
 
 	masterKey, err := readMasterKey(args)
 	if err != nil {
-		return fmt.Errorf("can't read master key: %s", err)
+		return hierr.Errorf(err, "can't read master key")
 	}
 
 	plaintext, err := readPlainText()
 	if err != nil {
-		return fmt.Errorf("can't read plaintext: %s", err)
+		return hierr.Errorf(err, "can't read plaintext")
 	}
 
 	repo := git{
@@ -117,25 +127,25 @@ func addSecret(args map[string]interface{}) error {
 
 	encryptedToken, ciphertext, err := encryptBlob(token, plaintext, masterKey)
 	if err != nil {
-		return fmt.Errorf("can't encrypt blob: %s", err)
+		return hierr.Errorf(err, "can't encrypt blob")
 	}
 
 	hash, err := repo.writeObject(ciphertext.getBody())
 	if err != nil {
-		return fmt.Errorf("can't write Git object with ciphertext: %s", err)
+		return hierr.Errorf(err, "can't write Git object with ciphertext")
 	}
 
 	err = repo.updateRef(
 		filepath.Join(refNamespace, hex.EncodeToString(encryptedToken)), hash,
 	)
 	if err != nil {
-		return fmt.Errorf("can't set ref for Git object '%s': %s", hash, err)
+		return hierr.Errorf(err, "can't set ref for Git object '%s'", hash)
 	}
 
 	if doSync {
 		err := pushRemote(repo, remote, refNamespace)
 		if err != nil {
-			return fmt.Errorf("can't sync with remote: %s", err)
+			return hierr.Errorf(err, "can't sync with remote")
 		}
 	}
 
@@ -145,7 +155,7 @@ func addSecret(args map[string]interface{}) error {
 func modifySecret(args map[string]interface{}) error {
 	var (
 		editor = args["-e"].(string)
-		doPush = !args["-n"].(bool)
+		noPush = args["-n"].(bool)
 	)
 
 	secret, err := extractSecret(args)
@@ -157,15 +167,16 @@ func modifySecret(args map[string]interface{}) error {
 	if secret != nil {
 		plaintext, err = ioutil.ReadAll(secret.stream)
 		if err != nil {
-			return fmt.Errorf(
-				"can't obtain plaintext from secret: %s", err,
+			return hierr.Errorf(
+				err,
+				"can't obtain plaintext from secret",
 			)
 		}
 	}
 
 	os.Stdin, err = openEditor(editor, plaintext)
 	if err != nil {
-		return fmt.Errorf("can't edit secret's text: %s", err)
+		return hierr.Errorf(err, "can't edit secret's text")
 	}
 
 	args["-n"] = true
@@ -174,19 +185,21 @@ func modifySecret(args map[string]interface{}) error {
 		if _, ok := err.(remoteError); ok {
 			log.Println(err)
 		} else {
-			return fmt.Errorf(
-				"can't add modified secret: %s", err,
+			return hierr.Errorf(
+				err,
+				"can't add modified secret",
 			)
 		}
 	}
 
 	if secret != nil {
 		args["<token>"] = secret.token + tokenHashDelimiter + secret.hash
-		args["-n"] = !doPush
+		args["-n"] = noPush
 		err = removeSecret(args)
 		if err != nil {
-			return fmt.Errorf(
-				"can't remove old secret: %s", err,
+			return hierr.Errorf(
+				err,
+				"can't remove old secret",
 			)
 		}
 	}
@@ -195,21 +208,39 @@ func modifySecret(args map[string]interface{}) error {
 }
 
 func openEditor(editor string, plaintext []byte) (*os.File, error) {
-	buffer, err := ioutil.TempFile(os.TempDir(), "carcossa")
-	buffer.Chmod(0600)
+	buffer, err := ioutil.TempFile(os.TempDir(), "carcosa")
+	if err != nil {
+		return nil, hierr.Errorf(
+			err,
+			"can't create temporary buffer file '%s'",
+			buffer.Name(),
+		)
+	}
+
+	err = buffer.Chmod(0600)
+	if err != nil {
+		return nil, hierr.Errorf(
+			err,
+			"can't chmod 0600 temporary buffer file '%s'",
+			buffer.Name(),
+		)
+	}
+
 	_, err = buffer.Write(plaintext)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"can't write data to temporary buffer file '%s': %s",
-			buffer.Name(), err,
+		return nil, hierr.Errorf(
+			err,
+			"can't write data to temporary buffer file '%s'",
+			buffer.Name(),
 		)
 	}
 
 	err = buffer.Sync()
 	if err != nil {
-		return nil, fmt.Errorf(
-			"can't sync data to temporary buffer file '%s': %s",
-			buffer.Name(), err,
+		return nil, hierr.Errorf(
+			err,
+			"can't sync data to temporary buffer file '%s'",
+			buffer.Name(),
 		)
 	}
 
@@ -218,20 +249,20 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	cmd.Env = append(os.Environ(), []string{"CARCOSSA_MASTER_KEY="}...)
-
 	err = cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf(
-			"editor '%s %s' exited with error: %s", editor, buffer.Name(), err,
+		return nil, hierr.Errorf(
+			err,
+			"editor '%s %s' exited with error", editor, buffer.Name(),
 		)
 	}
 
 	_, err = buffer.Seek(0, 0)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"can't seek to the beginning of the file '%s': %s",
-			buffer.Name(), err,
+		return nil, hierr.Errorf(
+			err,
+			"can't seek to the beginning of the file '%s'",
+			buffer.Name(),
 		)
 	}
 
@@ -255,21 +286,23 @@ func extractSecret(args map[string]interface{}) (*secret, error) {
 	if syncFirst {
 		err := fetchRemote(repo, remote, refNamespace)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"can't sync with remote: %s", err,
+			return nil, hierr.Errorf(
+				err,
+				"can't sync with remote",
 			)
 		}
 	}
 
 	masterKey, err := readMasterKey(args)
 	if err != nil {
-		return nil, fmt.Errorf("can't read master key: %s", err)
+		return nil, hierr.Errorf(err, "can't read master key")
 	}
 
 	secrets, err := getSecretsFromRepo(repo, refNamespace, masterKey)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"can't get secrets from repo '%s': %s", repoPath, err,
+		return nil, hierr.Errorf(
+			err,
+			"can't get secrets from repo '%s'", repoPath,
 		)
 	}
 
@@ -315,8 +348,9 @@ func getSecret(args map[string]interface{}) error {
 
 	plaintext, err := ioutil.ReadAll(secret.stream)
 	if err != nil {
-		return fmt.Errorf(
-			"can't obtain plaintext from secret: %s", err,
+		return hierr.Errorf(
+			err,
+			"can't obtain plaintext from secret",
 		)
 	}
 
@@ -335,15 +369,16 @@ func listSecrets(args map[string]interface{}) error {
 	if syncFirst {
 		err := syncSecrets(args)
 		if err != nil {
-			return fmt.Errorf(
-				"can't sync with remote: %s", err,
+			return hierr.Errorf(
+				err,
+				"can't sync with remote",
 			)
 		}
 	}
 
 	masterKey, err := readMasterKey(args)
 	if err != nil {
-		return fmt.Errorf("can't read master key: %s", err)
+		return hierr.Errorf(err, "can't read master key")
 	}
 
 	repo := git{
@@ -352,8 +387,9 @@ func listSecrets(args map[string]interface{}) error {
 
 	secrets, err := getSecretsFromRepo(repo, refNamespace, masterKey)
 	if err != nil {
-		return fmt.Errorf(
-			"can't get secrets from repo '%s': %s", repoPath, err,
+		return hierr.Errorf(
+			err,
+			"can't get secrets from repo '%s'", repoPath,
 		)
 	}
 
@@ -397,8 +433,9 @@ func removeSecret(args map[string]interface{}) error {
 
 	err = repo.removeRef(secret.ref.name)
 	if err != nil {
-		return fmt.Errorf(
-			"can't remove ref '%s': %s", secret.ref.name, err,
+		return hierr.Errorf(
+			err,
+			"can't remove ref '%s'", secret.ref.name,
 		)
 	}
 
@@ -441,27 +478,21 @@ func syncSecrets(args map[string]interface{}) error {
 
 func readMasterKey(args map[string]interface{}) ([]byte, error) {
 	var (
-		useCache      = args["-c"].(bool)
-		cacheFileName = args["-f"].(string)
+		useCache             = args["-c"].(bool)
+		cacheFileName        = args["-f"].(string)
+		masterKeyFileName, _ = args["-k"].(string)
 	)
 
-	if os.Getenv("CARCOSSA_MASTER_KEY") != "" {
-		masterKey, err := hex.DecodeString(os.Getenv("CARCOSSA_MASTER_KEY"))
-		if err != nil {
-			return nil, fmt.Errorf(
-				"can't decode hex value of CARCOSSA_MASTER_KEY env var: %s",
-				err,
-			)
-		}
-
-		return []byte(masterKey), nil
+	if len(globalMasterKey) > 0 {
+		return globalMasterKey, nil
 	}
 
 	if useCache {
 		masterKey, err := getMasterKeyFromCache(cacheFileName)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"can't retrieve master key from cache: %s", err,
+			return nil, hierr.Errorf(
+				err,
+				"can't retrieve master key from cache",
 			)
 		}
 
@@ -470,21 +501,38 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		}
 	}
 
-	fmt.Fprint(os.Stderr, "Enter master password: ")
-	masterKey, err := terminal.ReadPassword(0)
-	if err != nil {
-		return nil, fmt.Errorf("can't read master password: %s", err)
-	}
-
-	fmt.Fprint(os.Stderr, "\n")
-
-	if useCache {
-		err := storeMasterKeyCache(masterKey, cacheFileName)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"can't store master key cache: %s", err,
+	if stat, err := os.Stdin.Stat(); err != nil {
+		return nil, hierr.Errorf(err, "can't stat stdin")
+	} else {
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			return nil, hierr.Errorf(
+				err, "interactive terminal required, pipe given",
 			)
 		}
+	}
+
+	var masterKey []byte
+	var err error
+
+	if masterKeyFileName == "" {
+		fmt.Fprint(os.Stderr, "Enter master password: ")
+		masterKey, err = terminal.ReadPassword(0)
+		if err != nil {
+			return nil, hierr.Errorf(
+				err, "can't read master password from terminal",
+			)
+		}
+	} else {
+		masterKey, err = ioutil.ReadFile(masterKeyFileName)
+		if err != nil {
+			return nil, hierr.Errorf(
+				err, "can't read master password from file",
+			)
+		}
+	}
+
+	if len(masterKey) < 1 {
+		return nil, fmt.Errorf("master key can't be empty")
 	}
 
 	paddedMasterKey, err := padBytesToBlockKey(masterKey)
@@ -492,7 +540,17 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		return nil, err
 	}
 
-	err = os.Setenv("CARCOSSA_MASTER_KEY", hex.EncodeToString(paddedMasterKey))
+	if useCache {
+		err := storeMasterKeyCache(paddedMasterKey, cacheFileName)
+		if err != nil {
+			return nil, hierr.Errorf(
+				err,
+				"can't store master key cache",
+			)
+		}
+	}
+
+	globalMasterKey = paddedMasterKey
 
 	return paddedMasterKey, nil
 }
@@ -500,7 +558,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 func readPlainText() ([]byte, error) {
 	plaintext, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
-		return nil, fmt.Errorf("can't read secret body: %s", err)
+		return nil, hierr.Errorf(err, "can't read secret body")
 	}
 
 	return plaintext, nil
@@ -511,7 +569,7 @@ func getSecretsFromRepo(
 ) ([]secret, error) {
 	encryptedTokens, err := repo.listRefs(refNamespace)
 	if err != nil {
-		return nil, fmt.Errorf("can't get tokens: %s", err)
+		return nil, hierr.Errorf(err, "can't get tokens")
 	}
 
 	secrets := []secret{}
@@ -520,23 +578,26 @@ func getSecretsFromRepo(
 		hexToken := strings.TrimPrefix(ref.name, refNamespace)
 		blobBody, err := repo.catFile(ref.hash)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"can't get ciphertext from: %s", err,
+			return nil, hierr.Errorf(
+				err,
+				"can't get ciphertext from",
 			)
 		}
 
 		encryptedToken, err := hex.DecodeString(hexToken)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"can't decode hex token '%s': %s", hexToken, err,
+			return nil, hierr.Errorf(
+				err,
+				"can't decode hex token '%s'", hexToken,
 			)
 		}
 
 		secret, err := decryptBlob(encryptedToken, blobBody, masterKey)
 		if err != nil {
 			if err != errInvalidHMAC {
-				return nil, fmt.Errorf(
-					"can't decrypt blob for token '%s': %s", hexToken, err,
+				return nil, hierr.Errorf(
+					err,
+					"can't decrypt blob for token '%s'", hexToken,
 				)
 			}
 		} else {
@@ -551,7 +612,7 @@ func getSecretsFromRepo(
 func storeMasterKeyCache(masterKey []byte, cacheFileName string) error {
 	machineKey, err := getUniqueMachineID()
 	if err != nil {
-		return fmt.Errorf("can't obtain machine key: %s", err)
+		return hierr.Errorf(err, "can't obtain machine key")
 	}
 
 	encryptedToken, ciphertext, err := encryptBlob(
@@ -565,8 +626,9 @@ func storeMasterKeyCache(masterKey []byte, cacheFileName string) error {
 
 	err = os.MkdirAll(filepath.Dir(targetCacheName), 0700)
 	if err != nil {
-		return fmt.Errorf(
-			"can't create dir for '%s': %s", targetCacheName, err,
+		return hierr.Errorf(
+			err,
+			"can't create dir for '%s'", targetCacheName,
 		)
 	}
 
@@ -574,24 +636,27 @@ func storeMasterKeyCache(masterKey []byte, cacheFileName string) error {
 		targetCacheName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600,
 	)
 	if err != nil {
-		return fmt.Errorf(
-			"can't create cache file '%s' for master key: %s",
-			targetCacheName, err,
+		return hierr.Errorf(
+			err,
+			"can't create cache file '%s' for master key",
+			targetCacheName,
 		)
 	}
 
 	_, err = file.Write(ciphertext.getBody())
 	if err != nil {
-		return fmt.Errorf(
-			"can't write encrypted master key to '%s': %s",
-			targetCacheName, err,
+		return hierr.Errorf(
+			err,
+			"can't write encrypted master key to '%s'",
+			targetCacheName,
 		)
 	}
 
 	err = file.Close()
 	if err != nil {
-		return fmt.Errorf(
-			"can't close cache file '%s': %s", targetCacheName, err,
+		return hierr.Errorf(
+			err,
+			"can't close cache file '%s'", targetCacheName,
 		)
 	}
 
@@ -601,13 +666,14 @@ func storeMasterKeyCache(masterKey []byte, cacheFileName string) error {
 func getMasterKeyFromCache(cacheFileName string) ([]byte, error) {
 	machineKey, err := getUniqueMachineID()
 	if err != nil {
-		return nil, fmt.Errorf("can't obtain machine key: %s", err)
+		return nil, hierr.Errorf(err, "can't obtain machine key")
 	}
 
 	candidates, err := filepath.Glob(cacheFileName + ".*")
 	if err != nil {
-		return nil, fmt.Errorf(
-			"can't glob for '%s.*': %s", cacheFileName, err,
+		return nil, hierr.Errorf(
+			err,
+			"can't glob for '%s.*'", cacheFileName,
 		)
 	}
 
@@ -615,34 +681,45 @@ func getMasterKeyFromCache(cacheFileName string) ([]byte, error) {
 		hexToken := strings.TrimPrefix(candidate, cacheFileName+".")
 		encryptedKey, err := ioutil.ReadFile(candidate)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"can't read encrypted master key from '%s': %s",
-				candidate, err,
+			return nil, hierr.Errorf(
+				err,
+				"can't read encrypted master key from '%s'",
+				candidate,
 			)
 		}
 
 		encryptedToken, err := hex.DecodeString(hexToken)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"can't decode hex token '%s': %s", hexToken, err,
+			return nil, hierr.Errorf(
+				err,
+				"can't decode hex token '%s'", hexToken,
 			)
 		}
 
 		secret, err := decryptBlob(encryptedToken, encryptedKey, machineKey)
 		if err != nil {
 			if err != errInvalidHMAC {
-				return nil, fmt.Errorf(
-					"can't decrypt master key from '%s': %s",
-					candidate, err,
+				return nil, hierr.Errorf(
+					err,
+					"can't decrypt master key from '%s'",
+					candidate,
 				)
 			}
 		}
 
 		masterKey, err := ioutil.ReadAll(secret.stream)
 		if err != nil {
+			return nil, hierr.Errorf(
+				err,
+				"can't decrypt master key stream from '%s'",
+				candidate,
+			)
+		}
+
+		if len(masterKey) < 1 {
 			return nil, fmt.Errorf(
-				"can't decrypt master key stream from '%s': %s",
-				candidate, err,
+				"empty key specified in '%s'",
+				candidate,
 			)
 		}
 
@@ -660,7 +737,7 @@ func getUniqueMachineID() ([]byte, error) {
 		func(path string, info os.FileInfo, err error) error {
 			_, err = hash.Write([]byte(path))
 			if err != nil {
-				return fmt.Errorf("error hashing path '%s': %s", path, err)
+				return hierr.Errorf(err, "error hashing path '%s'", path)
 			}
 
 			return nil
@@ -668,8 +745,9 @@ func getUniqueMachineID() ([]byte, error) {
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf(
-			"can't list machine disks from /dev/disk: %s", err,
+		return nil, hierr.Errorf(
+			err,
+			"can't list machine disks from /dev/disk",
 		)
 	}
 

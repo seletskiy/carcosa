@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"github.com/seletskiy/hierr"
 )
 
 type remoteError struct {
@@ -19,8 +21,9 @@ func fetchRemote(repo git, remote string, refNamespace string) error {
 
 		err := repo.clone(remote)
 		if err != nil {
-			return fmt.Errorf(
-				"can't clone git repo '%s': %s", remote, err,
+			return hierr.Errorf(
+				err,
+				"can't clone git repo '%s'", remote,
 			)
 		}
 	}
@@ -32,8 +35,9 @@ func fetchRemote(repo git, remote string, refNamespace string) error {
 
 	err := repo.fetch(remote, refSpec)
 	if err != nil {
-		return remoteError{fmt.Errorf(
-			"can't pull remote '%s': %s", remote, err,
+		return remoteError{hierr.Errorf(
+			err,
+			"can't pull remote '%s'", remote,
 		)}
 	}
 
@@ -48,8 +52,9 @@ func pushRemote(repo git, remote string, refNamespace string) error {
 
 	err := repo.push(remote, refSpec)
 	if err != nil {
-		return remoteError{fmt.Errorf(
-			"can't push to remote git repo '%s': %s", remote, err,
+		return remoteError{hierr.Errorf(
+			err,
+			"can't push to remote git repo '%s'", remote,
 		)}
 	}
 
