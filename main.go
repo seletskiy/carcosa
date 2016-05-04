@@ -21,7 +21,7 @@ var globalMasterKey []byte
 
 const tokenHashDelimiter = "::"
 
-const usage = `$0 - git-backed secrets storage.
+const usage = `carcosa - git-backed secrets storage.
 
 Tool provides a way of storing arbitrary data inside encrypted git objects.
 
@@ -57,43 +57,47 @@ Remote sync is controlled via '-n' and '-y' flags, see more in usage.
 
 Usage:
     carcosa [options] -h | --help
-    carcosa [options] -S [-n] [-r <remote>]
-    carcosa [options] -A [-n] <token>
-    carcosa [options] -M [-n] <token>
-    carcosa [options] -G [-y] <token>
-    carcosa [options] -L [-y]
-    carcosa [options] -R [-n] <token>
+    carcosa [options] -S [-c] [-n] [-r <remote>]
+    carcosa [options] -A [-c] [-n] <token>
+    carcosa [options] -M [-c] [-n] <token>
+    carcosa [options] -G [-c] [-y] <token>
+    carcosa [options] -L [-c] [-y]
+    carcosa [options] -R [-c] [-n] <token>
+    carcosa [options] -F -c
 
 Options:
-    -h --help    Show this help.
-    -S --sync    Initializes local storage from the remote or sync with already
-                  initialized storage (push & pull).
-                  Push can be prohibited by using '-n' flag.
-                  If target directory is empty, then remote will be cloned and
-                  therefore should be specified via '-r' flag.
-    -A --add     Add secret for specified token. Secret will be read from
-                  stdin.
-    -M --modify  Modify secret for specified token in place. '-e' flag can be
-                  used to set editor.
-    -G --get     Get secret by specified token.
-    -L --list    List tokens.
-    -R --remove  Remove secret by specified token.
-    -s <ref-ns>  Use specified ref namespace.
-                  [default: refs/tokens/]
-    -p <path>    Set git repo path to store secrets in.
-                  [default: .]
-    -n           Do not interact with remote repo (no push / no pull).
-    -y           Sync with remote before doing anything else.
-    -r <remote>  Remote repository name to use.
-                  [default: origin].
-    -c           Use cache for master password. Master password will be
-                  encrypted using unique encryption key for current machine.
-    -f <cache>   Cache file for master password.
-                  [default: ~/.config/carcosa/master]
-    -k <file>    Read master key from specified file. WARNING: that can be
-                  unsecure; use of fifo pipe as a file is preferable.
-    -e <editor>  Use specified editor for modifying secret in place.
-                  [default: $EDITOR]
+    -h --help      Show this help.
+    -S --sync      Initializes local storage from the remote or sync with
+                    already initialized storage (push & pull).  Push can be
+                    prohibited by using '-n' flag.
+                    If target directory is empty, then remote will be cloned
+                    and therefore should be specified via '-r' flag.
+    -A --add       Add secret for specified token. Secret will be read from
+                    stdin.
+    -M --modify    Modify secret for specified token in place. '-e' flag can be
+                    used to set editor.
+    -G --get       Get secret by specified token.
+    -L --list      List tokens.
+    -R --remove    Remove secret by specified token.
+    -F --keycheck  Check that master password cache presents and exit if it is
+                    not. Suitable for scripting purposes.
+    -s <ref-ns>    Use specified ref namespace.
+                    [default: refs/tokens/]
+    -p <path>      Set git repo path to store secrets in.
+                    [default: .]
+    -n             Do not interact with remote repo (no push / no pull).
+    -y             Sync with remote before doing anything else.
+    -r <remote>    Remote repository name to use.
+                    [default: origin].
+    -c             Use cache for master password. Master password will be
+                    encrypted using unique encryption key for current machine.
+    -f <cache>     Cache file prefix for master password. Acutal file name will
+                    ends with hash suffix.
+                    [default: ~/.config/carcosa/master]
+    -k <file>      Read master key from specified file. WARNING: that can be
+                    unsecure; use of fifo pipe as a file is preferable.
+    -e <editor>    Use specified editor for modifying secret in place.
+                    [default: $EDITOR]
 `
 
 func main() {
@@ -118,6 +122,8 @@ func main() {
 		err = modifySecret(args)
 	case args["--remove"].(bool):
 		err = removeSecret(args)
+	case args["--keycheck"].(bool):
+		err = checkMasterPasswordCache(args)
 	}
 
 	if err != nil {
@@ -494,6 +500,17 @@ func syncSecrets(args map[string]interface{}) error {
 	err := fetchRemote(repo, remote, refNamespace)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func checkMasterPasswordCache(args map[string]interface{}) error {
+	args["-k"] = "/dev/null"
+
+	_, err := readMasterKey(args)
+	if err != nil {
+		return hierr.Errorf(err, "can't read master key")
 	}
 
 	return nil
