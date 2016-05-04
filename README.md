@@ -80,3 +80,31 @@ It will output contents of the secret, decrypted by master password.
 
 Note that it will not sync with the remote repo first. If you want to, you
 can specify flag `-y
+
+## Advanced usage
+
+### Caching master password
+
+Add `-c` flag to every command for storing master key (encrypted too) in the
+read-by-you only cache file. Then, everytime you invoke carcosa with `-c` flag
+master key will be read from that file and will not be asked again.
+
+```
+carcosa -Lc  # enter master key once
+carcosa -L   # use carcosa without entering master key
+```
+
+### Using UI
+
+Sample dmenu-based UI available at: https://github.com/deadcrew/deadfiles/blob/1eeb698/carcosa-ui
+
+By default, it will look into `~/.secrets` directory and expect to find secrets
+repo there. Alternatively, `$SECRETS_REPOSITORY` can be specified as
+environment variable to override that location.
+
+Before usage, master key should be cached by invoking any retrieve or store
+command with `-c` flag. Like:
+
+```
+carcosa -Lc
+```
