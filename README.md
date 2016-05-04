@@ -7,9 +7,9 @@ public/private git repositories.
 
 *carcosa* stores secrets (like passwords) under the tokens (e.g. names).
 
-Both tokens and secrets are securely encrypted via AES and it's not
-possible to decrypt one without another. It's not possible to get the
-list of tokens without the knowledge of the *master password*.
+Tokens and secrets are encrypted via AES and it's impossible to decrypt one
+without another. No one can get the list of tokens without the knowledge of the
+*master password*.
 
 ## How to use carcosa?
 
