@@ -96,7 +96,7 @@ carcosa -L   # use carcosa without entering master key
 
 ### Using UI
 
-Sample dmenu-based UI available at: https://github.com/deadcrew/deadfiles/blob/1eeb698/carcosa-ui
+Sample dmenu-based UI available at: https://github.com/deadcrew/deadfiles/blob/master/bin/carcosa-ui
 
 By default, it will look into `~/.secrets` directory and expect to find secrets
 repo there. Alternatively, `$SECRETS_REPOSITORY` can be specified as
