@@ -44,13 +44,18 @@ func fetchRemote(repo git, remote string, refNamespace string) error {
 	return nil
 }
 
-func pushRemote(repo git, remote string, refNamespace string) error {
+func pushRemote(
+	repo git,
+	remote string,
+	refNamespace string,
+	prune bool,
+) error {
 	refSpec := fmt.Sprintf(
 		"%[1]s/*:%[1]s/*",
 		strings.TrimSuffix(refNamespace, "/"),
 	)
 
-	err := repo.push(remote, refSpec)
+	err := repo.push(remote, refSpec, prune)
 	if err != nil {
 		return remoteError{hierr.Errorf(
 			err,

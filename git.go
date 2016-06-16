@@ -21,6 +21,11 @@ type ref struct {
 	hash string
 }
 
+const (
+	PushPrune   = true
+	PushNoPrune = false
+)
+
 func (repo *git) updateRef(refName string, pointer string) error {
 	output, err := exec.Command(
 		"git", "update-ref", refName, pointer,
@@ -181,10 +186,16 @@ func (repo *git) fetch(remote string, ref string) error {
 	return nil
 }
 
-func (repo *git) push(remote string, ref string) error {
-	cmd := exec.Command(
-		"git", "push", "--prune", remote, ref,
-	)
+func (repo *git) push(remote string, ref string, prune bool) error {
+	command := []string{
+		"git", "push", remote, ref,
+	}
+
+	if prune {
+		command = append(command, "--prune")
+	}
+
+	cmd := exec.Command(command[0], command[1:]...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

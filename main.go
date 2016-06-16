@@ -172,7 +172,7 @@ func addSecret(args map[string]interface{}) error {
 	}
 
 	if doSync {
-		err := pushRemote(repo, remote, refNamespace)
+		err := pushRemote(repo, remote, refNamespace, PushNoPrune)
 		if err != nil {
 			return hierr.Errorf(err, "can't sync with remote")
 		}
@@ -469,7 +469,7 @@ func removeSecret(args map[string]interface{}) error {
 	}
 
 	if doPush {
-		err := pushRemote(repo, remote, refNamespace)
+		err := pushRemote(repo, remote, refNamespace, PushPrune)
 		if err != nil {
 			return err
 		}
@@ -491,7 +491,7 @@ func syncSecrets(args map[string]interface{}) error {
 	}
 
 	if doPush {
-		err := pushRemote(repo, remote, refNamespace)
+		err := pushRemote(repo, remote, refNamespace, PushNoPrune)
 		if err != nil {
 			return err
 		}
