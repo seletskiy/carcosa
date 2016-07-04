@@ -11,7 +11,13 @@ import (
 	"fmt"
 	"hash"
 
+	"golang.org/x/crypto/pbkdf2"
+
 	"github.com/seletskiy/hierr"
+)
+
+const (
+	kdfIterations = 4096
 )
 
 type secret struct {
@@ -27,11 +33,19 @@ type blob struct {
 	body  []byte
 }
 
-func (data *blob) init(plaintext []byte) {
+func (data *blob) init(
+	initVector []byte,
+	cipher cipher.Block,
+	plaintext []byte,
+) {
+	data.block = cipher
+
 	data.body = make(
 		[]byte,
 		data.getBlockSize()+data.getHMACSize()+len(plaintext),
 	)
+
+	copy(data.getInitVector(), initVector)
 }
 
 func (data *blob) getBody() []byte {
@@ -39,7 +53,7 @@ func (data *blob) getBody() []byte {
 }
 
 func (data *blob) getBlockSize() int {
-	return data.block.BlockSize()
+	return cipherBlockSize
 }
 
 func (data *blob) getHMACSize() int {
@@ -63,21 +77,26 @@ func (data *blob) getPlaintext() []byte {
 var (
 	errInvalidHMAC = fmt.Errorf("HMAC is not valid")
 
-	newHMAC   = sha256.New
-	newCipher = aes.NewCipher
+	newHMAC = sha256.New
+
+	newCipher       = aes.NewCipher
+	cipherBlockSize = aes.BlockSize
 )
 
-func decryptBlob(token []byte, body []byte, key []byte) (*secret, error) {
+func decryptBlob(token []byte, body []byte, password []byte) (*secret, error) {
+	ciphertext := blob{
+		HMAC: newHMAC,
+		body: body,
+	}
+
+	key := deriveKey(password, ciphertext.getInitVector())
+
 	blockCipher, err := newCipher(key)
 	if err != nil {
 		return nil, hierr.Errorf(err, "can't initialize AES")
 	}
 
-	ciphertext := blob{
-		HMAC:  newHMAC,
-		block: blockCipher,
-		body:  body,
-	}
+	ciphertext.block = blockCipher
 
 	decrypter := cipher.NewCFBDecrypter(
 		blockCipher, ciphertext.getInitVector(),
@@ -111,23 +130,26 @@ func decryptBlob(token []byte, body []byte, key []byte) (*secret, error) {
 }
 
 func encryptBlob(
-	token []byte, plaintext []byte, key []byte,
+	token []byte, plaintext []byte, password []byte,
 ) (encryptedToken []byte, ciphertext *blob, err error) {
-	blockCipher, err := aes.NewCipher(key)
+	ciphertext = &blob{
+		HMAC: sha256.New,
+	}
+
+	initVector := make([]byte, cipherBlockSize)
+
+	if _, err = rand.Read(initVector); err != nil {
+		return nil, nil, hierr.Errorf(err, "can't create IV for cipher")
+	}
+
+	key := deriveKey(password, initVector)
+
+	blockCipher, err := newCipher(key)
 	if err != nil {
 		return nil, nil, hierr.Errorf(err, "can't initialize AES")
 	}
 
-	ciphertext = &blob{
-		HMAC:  sha256.New,
-		block: blockCipher,
-	}
-
-	ciphertext.init(plaintext)
-
-	if _, err = rand.Read(ciphertext.getInitVector()); err != nil {
-		return nil, nil, hierr.Errorf(err, "can't create IV for cipher")
-	}
+	ciphertext.init(initVector, blockCipher, plaintext)
 
 	paddedToken := padBytes([]byte(token), blockCipher.BlockSize())
 
@@ -181,15 +203,6 @@ func padBytes(source []byte, length int) []byte {
 	return result
 }
 
-func padBytesToBlockKey(source []byte) ([]byte, error) {
-	switch {
-	case len(source) < 16:
-		return padBytes(source, 16), nil
-	case len(source) < 24:
-		return padBytes(source, 24), nil
-	case len(source) < 32:
-		return padBytes(source, 32), nil
-	default:
-		return nil, fmt.Errorf("key is too long (max 32 bytes)")
-	}
+func deriveKey(key []byte, salt []byte) []byte {
+	return pbkdf2.Key(key, salt, kdfIterations, cipherBlockSize, sha256.New)
 }

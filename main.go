@@ -576,13 +576,8 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		return nil, fmt.Errorf("master key can't be empty")
 	}
 
-	paddedMasterKey, err := padBytesToBlockKey(masterKey)
-	if err != nil {
-		return nil, err
-	}
-
 	if useCache {
-		err := storeMasterKeyCache(paddedMasterKey, cacheFileName)
+		err := storeMasterKeyCache(masterKey, cacheFileName)
 		if err != nil {
 			return nil, hierr.Errorf(
 				err,
@@ -591,9 +586,9 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		}
 	}
 
-	globalMasterKey = paddedMasterKey
+	globalMasterKey = masterKey
 
-	return paddedMasterKey, nil
+	return masterKey, nil
 }
 
 func readPlainText() ([]byte, error) {
@@ -746,6 +741,8 @@ func getMasterKeyFromCache(cacheFileName string) ([]byte, error) {
 					candidate,
 				)
 			}
+
+			continue
 		}
 
 		masterKey, err := ioutil.ReadAll(secret.stream)
