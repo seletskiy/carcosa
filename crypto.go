@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	kdfIterations = 4096
+	kdfIterations = 256
 )
 
 type secret struct {
