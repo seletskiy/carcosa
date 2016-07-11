@@ -79,7 +79,7 @@ carcosa -G my-super-password
 It will output contents of the secret, decrypted by master password.
 
 Note that it will not sync with the remote repo first. If you want to, you
-can specify flag `-y
+can specify flag `-y`
 
 ## Advanced usage
 
