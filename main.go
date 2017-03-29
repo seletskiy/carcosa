@@ -14,7 +14,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/docopt/docopt-go"
-	"github.com/seletskiy/hierr"
+	"github.com/reconquest/hierr-go"
 )
 
 var globalMasterKey []byte

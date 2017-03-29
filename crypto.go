@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"hash"
 
-	"golang.org/x/crypto/pbkdf2"
+	"github.com/reconquest/hierr-go"
 
-	"github.com/seletskiy/hierr"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
