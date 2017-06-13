@@ -28,7 +28,7 @@ const (
 
 func (repo *git) updateRef(refName string, pointer string) error {
 	output, err := exec.Command(
-		"git", "update-ref", refName, pointer,
+		"git", "-C", repo.path, "update-ref", refName, pointer,
 	).CombinedOutput()
 	if err != nil {
 		return hierr.Errorf(
@@ -42,7 +42,7 @@ func (repo *git) updateRef(refName string, pointer string) error {
 
 func (repo *git) removeRef(refName string) error {
 	output, err := exec.Command(
-		"git", "update-ref", "-d", refName,
+		"git", "-C", repo.path, "update-ref", "-d", refName,
 	).CombinedOutput()
 	if err != nil {
 		return hierr.Errorf(
@@ -56,7 +56,7 @@ func (repo *git) removeRef(refName string) error {
 
 func (repo *git) writeObject(data []byte) (string, error) {
 	cmd := exec.Command(
-		"git", "hash-object", "-w", "--stdin",
+		"git", "-C", repo.path, "hash-object", "-w", "--stdin",
 	)
 
 	stdin, err := cmd.StdinPipe()
@@ -104,8 +104,8 @@ func (repo *git) writeObject(data []byte) (string, error) {
 }
 
 func (repo *git) listRefs(namespace string) ([]ref, error) {
-	output, err := makeCommandInDir(
-		repo.path, "git", "show-ref",
+	output, err := exec.Command(
+		"git", "-C", repo.path, "show-ref",
 	).CombinedOutput()
 	if err != nil {
 		return nil, hierr.Errorf(
@@ -138,8 +138,8 @@ func (repo *git) listRefs(namespace string) ([]ref, error) {
 }
 
 func (repo *git) isGitRepo() bool {
-	err := makeCommandInDir(
-		repo.path, "git", "rev-parse", "--git-dir",
+	err := exec.Command(
+		"git", "-C", repo.path, "rev-parse", "--git-dir",
 	).Run()
 	if err != nil {
 		return false
@@ -150,7 +150,7 @@ func (repo *git) isGitRepo() bool {
 
 func (repo *git) clone(remote string) error {
 	cmd := exec.Command(
-		"git", "clone", "--depth=1", "--bare", "-n", remote, repo.path,
+		"git", "-C", repo.path, "clone", "--depth=1", "--bare", "-n", remote, repo.path,
 	)
 
 	cmd.Stdout = os.Stdout
@@ -168,8 +168,8 @@ func (repo *git) clone(remote string) error {
 }
 
 func (repo *git) fetch(remote string, ref string) error {
-	cmd := makeCommandInDir(
-		repo.path, "git", "fetch", remote, ref,
+	cmd := exec.Command(
+		"git", "-C", repo.path, "fetch", remote, ref,
 	)
 
 	cmd.Stdout = os.Stdout
@@ -188,7 +188,7 @@ func (repo *git) fetch(remote string, ref string) error {
 
 func (repo *git) push(remote string, ref string, prune bool) error {
 	command := []string{
-		"git", "push", remote, ref,
+		"git", "-C", repo.path, "push", remote, ref,
 	}
 
 	if prune {
@@ -212,8 +212,8 @@ func (repo *git) push(remote string, ref string, prune bool) error {
 }
 
 func (repo *git) catFile(hash string) ([]byte, error) {
-	output, err := makeCommandInDir(
-		repo.path, "git", "cat-file", "-p", hash,
+	output, err := exec.Command(
+		"git", "-C", repo.path, "cat-file", "-p", hash,
 	).CombinedOutput()
 	if err != nil {
 		return nil, hierr.Errorf(
@@ -223,10 +223,4 @@ func (repo *git) catFile(hash string) ([]byte, error) {
 	}
 
 	return output, nil
-}
-
-func makeCommandInDir(dir, name string, args ...string) *exec.Cmd {
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	return cmd
 }
