@@ -91,7 +91,7 @@ Options:
                     [default: origin].
     -c             Use cache for master password. Master password will be
                     encrypted using unique encryption key for current machine.
-    -f <cache>     Cache file prefix for master password. Acutal file name will
+    -f <cache>     Cache file prefix for master password. Actual file name will
                     ends with hash suffix.
                     [default: ~/.config/carcosa/master]
     -k <file>      Read master key from specified file. WARNING: that can be
