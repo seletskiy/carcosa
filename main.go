@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"golang.org/x/crypto/ssh/terminal"
@@ -607,6 +608,8 @@ func getSecretsFromRepo(
 	if err != nil {
 		return nil, hierr.Errorf(err, "can't get tokens")
 	}
+
+	sort.Sort(encryptedTokens)
 
 	secrets := []secret{}
 

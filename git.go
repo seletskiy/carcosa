@@ -7,9 +7,15 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/reconquest/hierr-go"
+)
+
+const (
+	PushPrune   = true
+	PushNoPrune = false
 )
 
 type git struct {
@@ -19,12 +25,34 @@ type git struct {
 type ref struct {
 	name string
 	hash string
+	stat os.FileInfo
 }
 
-const (
-	PushPrune   = true
-	PushNoPrune = false
-)
+type refs []ref
+
+func (refs refs) Len() int {
+	return len(refs)
+}
+
+func (refs refs) Swap(i, j int) {
+	refs[i], refs[j] = refs[j], refs[i]
+}
+
+func (refs refs) Less(i, j int) bool {
+	if refs[i].stat == nil {
+		panic(
+			fmt.Sprintf("ref %s stat is nil", refs[i].hash),
+		)
+	}
+
+	if refs[j].stat == nil {
+		panic(
+			fmt.Sprintf("ref %s stat is nil", refs[j].hash),
+		)
+	}
+
+	return refs[i].stat.ModTime().Unix() < refs[j].stat.ModTime().Unix()
+}
 
 func (repo *git) updateRef(refName string, pointer string) error {
 	output, err := exec.Command(
@@ -103,7 +131,7 @@ func (repo *git) writeObject(data []byte) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-func (repo *git) listRefs(namespace string) ([]ref, error) {
+func (repo *git) listRefs(namespace string) (refs, error) {
 	output, err := exec.Command(
 		"git", "-C", repo.path, "show-ref",
 	).CombinedOutput()
@@ -128,9 +156,15 @@ func (repo *git) listRefs(namespace string) ([]ref, error) {
 			continue
 		}
 
+		stat, err := os.Stat(filepath.Join(repo.path, ".git", name))
+		if err != nil {
+			return nil, hierr.Errorf(err, "can't stat() ref: %s", name)
+		}
+
 		refList = append(refList, ref{
 			name: name,
 			hash: hash,
+			stat: stat,
 		})
 	}
 
