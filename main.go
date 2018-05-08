@@ -776,6 +776,21 @@ func getUniqueMachineID() ([]byte, error) {
 	err := filepath.Walk(
 		"/dev/disk/by-uuid",
 		func(path string, info os.FileInfo, err error) error {
+			if info.IsDir() {
+				return nil
+			}
+
+			filename, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				return hierr.Errorf(err, "error resolving symlink '%s'", path)
+			}
+
+			// skip manually mounted
+			basename := filepath.Base(filename)
+			if strings.HasPrefix(basename, "loop") {
+				return nil
+			}
+
 			_, err = hash.Write([]byte(path))
 			if err != nil {
 				return hierr.Errorf(err, "error hashing path '%s'", path)
@@ -788,7 +803,7 @@ func getUniqueMachineID() ([]byte, error) {
 	if err != nil {
 		return nil, hierr.Errorf(
 			err,
-			"can't list machine disks from /dev/disk",
+			"can't list machine disks from /dev/disk/by-uuid",
 		)
 	}
 
