@@ -85,7 +85,7 @@ Options:
     -s <ref-ns>    Use specified ref namespace.
                     [default: refs/tokens/]
     -p <path>      Set git repo path to store secrets in.
-                    [default: .]
+                    [default: ~/.secrets/]
     -n             Do not interact with remote repo (no push / no pull).
     -y             Sync with remote before doing anything else.
     -r <remote>    Remote repository name to use.
