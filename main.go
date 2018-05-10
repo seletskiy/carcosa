@@ -787,7 +787,8 @@ func getUniqueMachineID() ([]byte, error) {
 
 			// skip manually mounted
 			basename := filepath.Base(filename)
-			if strings.HasPrefix(basename, "loop") {
+			if strings.HasPrefix(basename, "loop") ||
+				strings.HasPrefix(basename, "sr") {
 				return nil
 			}
 
