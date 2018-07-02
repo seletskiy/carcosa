@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/sha256"
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/docopt/docopt-go"
 	"github.com/reconquest/hierr-go"
+	"github.com/reconquest/karma-go"
 )
 
 var globalMasterKey []byte
@@ -771,42 +772,13 @@ func getMasterKeyFromCache(cacheFileName string) ([]byte, error) {
 }
 
 func getUniqueMachineID() ([]byte, error) {
-	hash := sha256.New()
-
-	err := filepath.Walk(
-		"/dev/disk/by-uuid",
-		func(path string, info os.FileInfo, err error) error {
-			if info.IsDir() {
-				return nil
-			}
-
-			filename, err := filepath.EvalSymlinks(path)
-			if err != nil {
-				return hierr.Errorf(err, "error resolving symlink '%s'", path)
-			}
-
-			// skip manually mounted
-			basename := filepath.Base(filename)
-			if strings.HasPrefix(basename, "loop") ||
-				strings.HasPrefix(basename, "sr") {
-				return nil
-			}
-
-			_, err = hash.Write([]byte(path))
-			if err != nil {
-				return hierr.Errorf(err, "error hashing path '%s'", path)
-			}
-
-			return nil
-		},
-	)
-
+	contents, err := ioutil.ReadFile("/etc/machine-id")
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
-			"can't list machine disks from /dev/disk/by-uuid",
+			"unable to read /etc/machine-id",
 		)
 	}
 
-	return hash.Sum(nil), nil
+	return bytes.TrimSpace(contents), nil
 }
