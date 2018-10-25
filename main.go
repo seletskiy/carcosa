@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/sha256"
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/docopt/docopt-go"
 	"github.com/reconquest/hierr-go"
+	"github.com/reconquest/karma-go"
 )
 
 var globalMasterKey []byte
@@ -85,7 +86,7 @@ Options:
     -s <ref-ns>    Use specified ref namespace.
                     [default: refs/tokens/]
     -p <path>      Set git repo path to store secrets in.
-                    [default: .]
+                    [default: ~/.secrets/]
     -n             Do not interact with remote repo (no push / no pull).
     -y             Sync with remote before doing anything else.
     -r <remote>    Remote repository name to use.
@@ -771,26 +772,13 @@ func getMasterKeyFromCache(cacheFileName string) ([]byte, error) {
 }
 
 func getUniqueMachineID() ([]byte, error) {
-	hash := sha256.New()
-
-	err := filepath.Walk(
-		"/dev/disk/by-uuid",
-		func(path string, info os.FileInfo, err error) error {
-			_, err = hash.Write([]byte(path))
-			if err != nil {
-				return hierr.Errorf(err, "error hashing path '%s'", path)
-			}
-
-			return nil
-		},
-	)
-
+	contents, err := ioutil.ReadFile("/etc/machine-id")
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
-			"can't list machine disks from /dev/disk",
+			"unable to read /etc/machine-id",
 		)
 	}
 
-	return hash.Sum(nil), nil
+	return bytes.TrimSpace(contents), nil
 }
