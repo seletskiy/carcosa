@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,7 +24,7 @@ var globalMasterKey []byte
 
 const tokenHashDelimiter = "::"
 
-const usage = `carcosa - git-backed secrets storage.
+var usage = `carcosa - git-backed secrets storage.
 
 Tool provides a way of storing arbitrary data inside encrypted git objects.
 
@@ -86,7 +87,7 @@ Options:
     -s <ref-ns>    Use specified ref namespace.
                     [default: refs/tokens/]
     -p <path>      Set git repo path to store secrets in.
-                    [default: ~/.secrets/]
+                    [default: ` + filepath.Join("$HOME", ".secrets") + `]
     -n             Do not interact with remote repo (no push / no pull).
     -y             Sync with remote before doing anything else.
     -r <remote>    Remote repository name to use.
@@ -95,15 +96,24 @@ Options:
                     encrypted using unique encryption key for current machine.
     -f <cache>     Cache file prefix for master password. Actual file name will
                     ends with hash suffix.
-                    [default: ~/.config/carcosa/master]
+                    [default: ` + filepath.Join("$HOME", ".config", "carcosa", "master") + `]
     -k <file>      Read master key from specified file. WARNING: that can be
                     unsecure; use of fifo pipe as a file is preferable.
     -e <editor>    Use specified editor for modifying secret in place.
                     [default: $EDITOR]
 `
 
+func getHomeDir() string {
+	human, err := user.Current()
+	if err != nil {
+		panic(err)
+	}
+
+	return human.HomeDir
+}
+
 func main() {
-	usage := strings.Replace(usage, "~/", os.Getenv("HOME")+"/", -1)
+	usage := strings.Replace(usage, "$HOME", getHomeDir(), -1)
 	usage = strings.Replace(usage, "$EDITOR", os.Getenv("EDITOR"), -1)
 
 	args, err := docopt.Parse(usage, nil, true, "1", false)
