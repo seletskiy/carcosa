@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"golang.org/x/crypto/ssh/terminal"
 
@@ -568,7 +569,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 
 	if masterKeyFileName == "" {
 		fmt.Fprint(os.Stderr, "Enter master password: ")
-		masterKey, err = terminal.ReadPassword(0)
+		masterKey, err = terminal.ReadPassword(int(syscall.Stdin))
 		fmt.Fprintln(os.Stderr)
 		if err != nil {
 			return nil, hierr.Errorf(
