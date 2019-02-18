@@ -72,7 +72,7 @@ Usage:
 Options:
     -h --help      Show this help.
     -S --sync      Initializes local storage from the remote or sync with
-                    already initialized storage (push & pull).  Push can be
+                    already initialized storage (pull & push).  Push can be
                     prohibited by using '-n' flag.
                     If target directory is empty, then remote will be cloned
                     and therefore should be specified via '-r' flag.
@@ -503,16 +503,16 @@ func syncSecrets(args map[string]interface{}) error {
 		path: repoPath,
 	}
 
+	err := fetchRemote(repo, remote, refNamespace)
+	if err != nil {
+		return err
+	}
+
 	if doPush {
 		err := pushRemote(repo, remote, refNamespace, PushNoPrune)
 		if err != nil {
 			return err
 		}
-	}
-
-	err := fetchRemote(repo, remote, refNamespace)
-	if err != nil {
-		return err
 	}
 
 	return nil
