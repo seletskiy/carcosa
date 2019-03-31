@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -534,6 +535,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		useCache             = args["-c"].(bool)
 		cacheFileName        = args["-f"].(string)
 		masterKeyFileName, _ = args["-k"].(string)
+		repoPath             = args["-p"].(string)
 	)
 
 	if len(globalMasterKey) > 0 {
@@ -541,7 +543,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 	}
 
 	if useCache {
-		masterKey, err := getMasterKeyFromCache(cacheFileName)
+		masterKey, err := getMasterKeyFromCache(cacheFileName, repoPath)
 		if err != nil {
 			return nil, hierr.Errorf(
 				err,
@@ -590,7 +592,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 	}
 
 	if useCache {
-		err := storeMasterKeyCache(masterKey, cacheFileName)
+		err := storeMasterKeyCache(repoPath, masterKey, cacheFileName)
 		if err != nil {
 			return nil, hierr.Errorf(
 				err,
@@ -660,7 +662,11 @@ func getSecretsFromRepo(
 	return secrets, nil
 }
 
-func storeMasterKeyCache(masterKey []byte, cacheFileName string) error {
+func storeMasterKeyCache(
+	repoPath string,
+	masterKey []byte,
+	cacheFileName string,
+) error {
 	machineKey, err := getUniqueMachineID()
 	if err != nil {
 		return hierr.Errorf(err, "can't obtain machine key")
@@ -672,7 +678,9 @@ func storeMasterKeyCache(masterKey []byte, cacheFileName string) error {
 
 	targetCacheName := filepath.Join(
 		filepath.Dir(cacheFileName),
-		filepath.Base(cacheFileName)+"."+hex.EncodeToString(encryptedToken),
+		filepath.Base(cacheFileName)+
+			"."+getHash(repoPath)+
+			"."+hex.EncodeToString(encryptedToken),
 	)
 
 	err = os.MkdirAll(filepath.Dir(targetCacheName), 0700)
@@ -714,22 +722,29 @@ func storeMasterKeyCache(masterKey []byte, cacheFileName string) error {
 	return nil
 }
 
-func getMasterKeyFromCache(cacheFileName string) ([]byte, error) {
+func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error) {
 	machineKey, err := getUniqueMachineID()
 	if err != nil {
 		return nil, hierr.Errorf(err, "can't obtain machine key")
 	}
 
-	candidates, err := filepath.Glob(cacheFileName + ".*")
+	repoHash := getHash(repoPath)
+	candidates, err := filepath.Glob(
+		cacheFileName + "." + repoHash + ".*",
+	)
 	if err != nil {
 		return nil, hierr.Errorf(
 			err,
-			"can't glob for '%s.*'", cacheFileName,
+			"can't glob for '%s.%s.*'", cacheFileName, repoHash,
 		)
 	}
 
 	for _, candidate := range candidates {
-		hexToken := strings.TrimPrefix(candidate, cacheFileName+".")
+		hexToken := strings.TrimPrefix(
+			candidate,
+			cacheFileName+"."+repoHash+".",
+		)
+
 		encryptedKey, err := ioutil.ReadFile(candidate)
 		if err != nil {
 			return nil, hierr.Errorf(
@@ -792,4 +807,10 @@ func getUniqueMachineID() ([]byte, error) {
 	}
 
 	return bytes.TrimSpace(contents), nil
+}
+
+func getHash(value string) string {
+	sha := sha256.New()
+	sha.Write([]byte(value))
+	return hex.EncodeToString(sha.Sum(nil))
 }

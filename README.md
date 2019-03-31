@@ -91,7 +91,7 @@ master key will be read from that file and will not be asked again.
 
 ```
 carcosa -Lc  # enter master key once
-carcosa -L   # use carcosa without entering master key
+carcosa -Lc  # use carcosa without entering master key
 ```
 
 ### Using UI
