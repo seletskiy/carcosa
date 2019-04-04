@@ -55,9 +55,7 @@ func (refs refs) Less(i, j int) bool {
 }
 
 func (repo *git) updateRef(refName string, pointer string) error {
-	output, err := exec.Command(
-		"git", "-C", repo.path, "update-ref", refName, pointer,
-	).CombinedOutput()
+	output, err := repo.cmd("update-ref", refName, pointer).CombinedOutput()
 	if err != nil {
 		return hierr.Errorf(
 			err,
@@ -69,9 +67,7 @@ func (repo *git) updateRef(refName string, pointer string) error {
 }
 
 func (repo *git) removeRef(refName string) error {
-	output, err := exec.Command(
-		"git", "-C", repo.path, "update-ref", "-d", refName,
-	).CombinedOutput()
+	output, err := repo.cmd("update-ref", "-d", refName).CombinedOutput()
 	if err != nil {
 		return hierr.Errorf(
 			err,
@@ -83,9 +79,7 @@ func (repo *git) removeRef(refName string) error {
 }
 
 func (repo *git) writeObject(data []byte) (string, error) {
-	cmd := exec.Command(
-		"git", "-C", repo.path, "hash-object", "-w", "--stdin",
-	)
+	cmd := repo.cmd("hash-object", "-w", "--stdin")
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -132,9 +126,7 @@ func (repo *git) writeObject(data []byte) (string, error) {
 }
 
 func (repo *git) listRefs(namespace string) (refs, error) {
-	output, err := exec.Command(
-		"git", "-C", repo.path, "show-ref",
-	).CombinedOutput()
+	output, err := repo.cmd("show-ref").CombinedOutput()
 	if err != nil {
 		return nil, hierr.Errorf(
 			err,
@@ -172,9 +164,7 @@ func (repo *git) listRefs(namespace string) (refs, error) {
 }
 
 func (repo *git) isGitRepo() bool {
-	err := exec.Command(
-		"git", "-C", repo.path, "rev-parse", "--git-dir",
-	).Run()
+	err := repo.cmd("rev-parse", "--git-dir").Run()
 	if err != nil {
 		return false
 	}
@@ -183,9 +173,7 @@ func (repo *git) isGitRepo() bool {
 }
 
 func (repo *git) clone(remote string) error {
-	cmd := exec.Command(
-		"git", "-C", repo.path, "clone", "--depth=1", "--bare", "-n", remote, repo.path,
-	)
+	cmd := repo.cmd("clone", "--depth=1", "--bare", "-n", remote, repo.path)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -202,9 +190,7 @@ func (repo *git) clone(remote string) error {
 }
 
 func (repo *git) fetch(remote string, ref string) error {
-	cmd := exec.Command(
-		"git", "-C", repo.path, "fetch", remote, ref,
-	)
+	cmd := repo.cmd("fetch", remote, ref)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -221,15 +207,13 @@ func (repo *git) fetch(remote string, ref string) error {
 }
 
 func (repo *git) push(remote string, ref string, prune bool) error {
-	command := []string{
-		"git", "-C", repo.path, "push", remote, ref,
-	}
+	args := []string{"push", remote, ref}
 
 	if prune {
-		command = append(command, "--prune")
+		args = append(args, "--prune")
 	}
 
-	cmd := exec.Command(command[0], command[1:]...)
+	cmd := repo.cmd(args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -246,9 +230,7 @@ func (repo *git) push(remote string, ref string, prune bool) error {
 }
 
 func (repo *git) catFile(hash string) ([]byte, error) {
-	output, err := exec.Command(
-		"git", "-C", repo.path, "cat-file", "-p", hash,
-	).CombinedOutput()
+	output, err := repo.cmd("cat-file", "-p", hash).CombinedOutput()
 	if err != nil {
 		return nil, hierr.Errorf(
 			err,
@@ -257,4 +239,13 @@ func (repo *git) catFile(hash string) ([]byte, error) {
 	}
 
 	return output, nil
+}
+
+func (repo *git) cmd(args ...string) *exec.Cmd {
+	args = append([]string{"-C", repo.path}, args...)
+
+	command := exec.Command("git", args...)
+	command.Env = []string{}
+
+	return command
 }
