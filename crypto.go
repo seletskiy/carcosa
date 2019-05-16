@@ -11,8 +11,7 @@ import (
 	"fmt"
 	"hash"
 
-	"github.com/reconquest/hierr-go"
-
+	"github.com/reconquest/karma-go"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -93,7 +92,7 @@ func decryptBlob(token []byte, body []byte, password []byte) (*secret, error) {
 
 	blockCipher, err := newCipher(key)
 	if err != nil {
-		return nil, hierr.Errorf(err, "can't initialize AES")
+		return nil, karma.Format(err, "can't initialize AES")
 	}
 
 	ciphertext.block = blockCipher
@@ -139,14 +138,14 @@ func encryptBlob(
 	initVector := make([]byte, cipherBlockSize)
 
 	if _, err = rand.Read(initVector); err != nil {
-		return nil, nil, hierr.Errorf(err, "can't create IV for cipher")
+		return nil, nil, karma.Format(err, "can't create IV for cipher")
 	}
 
 	key := deriveKey(password, initVector)
 
 	blockCipher, err := newCipher(key)
 	if err != nil {
-		return nil, nil, hierr.Errorf(err, "can't initialize AES")
+		return nil, nil, karma.Format(err, "can't initialize AES")
 	}
 
 	ciphertext.init(initVector, blockCipher, plaintext)
@@ -178,7 +177,7 @@ func calcHMAC(
 
 	_, err := mac.Write(token)
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"can't calculate HMAC for token '%s'", token,
 		)

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/reconquest/hierr-go"
+	"github.com/reconquest/karma-go"
 )
 
 const (
@@ -57,7 +57,7 @@ func (refs refs) Less(i, j int) bool {
 func (repo *git) updateRef(refName string, pointer string) error {
 	output, err := repo.cmd("update-ref", refName, pointer).CombinedOutput()
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"error executing git update-ref\n%s", bytes.TrimSpace(output),
 		)
@@ -69,7 +69,7 @@ func (repo *git) updateRef(refName string, pointer string) error {
 func (repo *git) removeRef(refName string) error {
 	output, err := repo.cmd("update-ref", "-d", refName).CombinedOutput()
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"error executing git update-ref -d\n%s", bytes.TrimSpace(output),
 		)
@@ -83,17 +83,17 @@ func (repo *git) writeObject(data []byte) (string, error) {
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return "", hierr.Errorf(err, "can't get stdin for git hash-object")
+		return "", karma.Format(err, "can't get stdin for git hash-object")
 	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", hierr.Errorf(err, "can't get stdout for git hash-object")
+		return "", karma.Format(err, "can't get stdout for git hash-object")
 	}
 
 	err = cmd.Start()
 	if err != nil {
-		return "", hierr.Errorf(
+		return "", karma.Format(
 			err,
 			"can't run git hash-object",
 		)
@@ -101,17 +101,17 @@ func (repo *git) writeObject(data []byte) (string, error) {
 
 	_, err = stdin.Write(data)
 	if err != nil {
-		return "", hierr.Errorf(err, "can't write data to git hash-object")
+		return "", karma.Format(err, "can't write data to git hash-object")
 	}
 
 	err = stdin.Close()
 	if err != nil {
-		return "", hierr.Errorf(err, "can't close git hash-object stdin")
+		return "", karma.Format(err, "can't close git hash-object stdin")
 	}
 
 	output, err := ioutil.ReadAll(stdout)
 	if err != nil {
-		return "", hierr.Errorf(
+		return "", karma.Format(
 			err,
 			"can't read git hash-object result",
 		)
@@ -119,7 +119,7 @@ func (repo *git) writeObject(data []byte) (string, error) {
 
 	err = cmd.Wait()
 	if err != nil {
-		return "", hierr.Errorf(err, "can't wait for git hash-object")
+		return "", karma.Format(err, "can't wait for git hash-object")
 	}
 
 	return strings.TrimSpace(string(output)), nil
@@ -128,7 +128,7 @@ func (repo *git) writeObject(data []byte) (string, error) {
 func (repo *git) listRefs(namespace string) (refs, error) {
 	output, err := repo.cmd("show-ref").CombinedOutput()
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"error executing git show-ref\n%s", bytes.TrimSpace(output),
 		)
@@ -141,7 +141,7 @@ func (repo *git) listRefs(namespace string) (refs, error) {
 
 		_, err := fmt.Sscanf(scanner.Text(), "%s %s", &hash, &name)
 		if err != nil {
-			return nil, hierr.Errorf(err, "can't read from git show-ref")
+			return nil, karma.Format(err, "can't read from git show-ref")
 		}
 
 		if !strings.HasPrefix(name, namespace) {
@@ -150,7 +150,7 @@ func (repo *git) listRefs(namespace string) (refs, error) {
 
 		stat, err := os.Stat(filepath.Join(repo.path, ".git", name))
 		if err != nil {
-			return nil, hierr.Errorf(err, "can't stat() ref: %s", name)
+			return nil, karma.Format(err, "can't stat() ref: %s", name)
 		}
 
 		refList = append(refList, ref{
@@ -180,7 +180,7 @@ func (repo *git) clone(remote string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't run git clone '%s' -> '%s'", remote, repo.path,
 		)
@@ -197,7 +197,7 @@ func (repo *git) fetch(remote string, ref string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't run git fetch '%s' '%s'", remote, ref,
 		)
@@ -220,7 +220,7 @@ func (repo *git) push(remote string, ref string, prune bool) error {
 
 	err := cmd.Run()
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't run git push '%s' '%s'", remote, ref,
 		)
@@ -232,7 +232,7 @@ func (repo *git) push(remote string, ref string, prune bool) error {
 func (repo *git) catFile(hash string) ([]byte, error) {
 	output, err := repo.cmd("cat-file", "-p", hash).CombinedOutput()
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"error executing git cat-file\n%s", bytes.TrimSpace(output),
 		)

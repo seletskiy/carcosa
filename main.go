@@ -18,7 +18,6 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/docopt/docopt-go"
-	"github.com/reconquest/hierr-go"
 	"github.com/reconquest/karma-go"
 )
 
@@ -156,12 +155,12 @@ func addSecret(args map[string]interface{}) error {
 
 	masterKey, err := readMasterKey(args)
 	if err != nil {
-		return hierr.Errorf(err, "can't read master key")
+		return karma.Format(err, "can't read master key")
 	}
 
 	plaintext, err := readPlainText()
 	if err != nil {
-		return hierr.Errorf(err, "can't read plaintext")
+		return karma.Format(err, "can't read plaintext")
 	}
 
 	repo := git{
@@ -170,25 +169,25 @@ func addSecret(args map[string]interface{}) error {
 
 	encryptedToken, ciphertext, err := encryptBlob(token, plaintext, masterKey)
 	if err != nil {
-		return hierr.Errorf(err, "can't encrypt blob")
+		return karma.Format(err, "can't encrypt blob")
 	}
 
 	hash, err := repo.writeObject(ciphertext.getBody())
 	if err != nil {
-		return hierr.Errorf(err, "can't write Git object with ciphertext")
+		return karma.Format(err, "can't write Git object with ciphertext")
 	}
 
 	err = repo.updateRef(
 		filepath.Join(refNamespace, hex.EncodeToString(encryptedToken)), hash,
 	)
 	if err != nil {
-		return hierr.Errorf(err, "can't set ref for Git object '%s'", hash)
+		return karma.Format(err, "can't set ref for Git object '%s'", hash)
 	}
 
 	if doSync {
 		err := pushRemote(repo, remote, refNamespace, PushNoPrune)
 		if err != nil {
-			return hierr.Errorf(err, "can't sync with remote")
+			return karma.Format(err, "can't sync with remote")
 		}
 	}
 
@@ -210,7 +209,7 @@ func modifySecret(args map[string]interface{}) error {
 	if secret != nil {
 		plaintext, err = ioutil.ReadAll(secret.stream)
 		if err != nil {
-			return hierr.Errorf(
+			return karma.Format(
 				err,
 				"can't obtain plaintext from secret",
 			)
@@ -219,7 +218,7 @@ func modifySecret(args map[string]interface{}) error {
 
 	os.Stdin, err = openEditor(editor, plaintext)
 	if err != nil {
-		return hierr.Errorf(err, "can't edit secret's text")
+		return karma.Format(err, "can't edit secret's text")
 	}
 
 	args["-n"] = true
@@ -228,7 +227,7 @@ func modifySecret(args map[string]interface{}) error {
 		if _, ok := err.(remoteError); ok {
 			log.Println(err)
 		} else {
-			return hierr.Errorf(
+			return karma.Format(
 				err,
 				"can't add modified secret",
 			)
@@ -240,7 +239,7 @@ func modifySecret(args map[string]interface{}) error {
 		args["-n"] = noPush
 		err = removeSecret(args)
 		if err != nil {
-			return hierr.Errorf(
+			return karma.Format(
 				err,
 				"can't remove old secret",
 			)
@@ -253,7 +252,7 @@ func modifySecret(args map[string]interface{}) error {
 func openEditor(editor string, plaintext []byte) (*os.File, error) {
 	buffer, err := ioutil.TempFile(os.TempDir(), "carcosa")
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"can't create temporary buffer file '%s'",
 			buffer.Name(),
@@ -262,7 +261,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 	err = buffer.Chmod(0600)
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"can't chmod 0600 temporary buffer file '%s'",
 			buffer.Name(),
@@ -271,7 +270,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 	_, err = buffer.Write(plaintext)
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"can't write data to temporary buffer file '%s'",
 			buffer.Name(),
@@ -280,7 +279,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 	err = buffer.Sync()
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"can't sync data to temporary buffer file '%s'",
 			buffer.Name(),
@@ -294,7 +293,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 	err = cmd.Run()
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"editor '%s %s' exited with error", editor, buffer.Name(),
 		)
@@ -302,7 +301,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 	_, err = buffer.Seek(0, 0)
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"can't seek to the beginning of the file '%s'",
 			buffer.Name(),
@@ -329,7 +328,7 @@ func extractSecret(args map[string]interface{}) (*secret, error) {
 	if syncFirst {
 		err := fetchRemote(repo, remote, refNamespace)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err,
 				"can't sync with remote",
 			)
@@ -338,12 +337,12 @@ func extractSecret(args map[string]interface{}) (*secret, error) {
 
 	masterKey, err := readMasterKey(args)
 	if err != nil {
-		return nil, hierr.Errorf(err, "can't read master key")
+		return nil, karma.Format(err, "can't read master key")
 	}
 
 	secrets, err := getSecretsFromRepo(repo, refNamespace, masterKey)
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"can't get secrets from repo '%s'", repoPath,
 		)
@@ -391,7 +390,7 @@ func getSecret(args map[string]interface{}) error {
 
 	plaintext, err := ioutil.ReadAll(secret.stream)
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't obtain plaintext from secret",
 		)
@@ -412,7 +411,7 @@ func listSecrets(args map[string]interface{}) error {
 	if syncFirst {
 		err := syncSecrets(args)
 		if err != nil {
-			return hierr.Errorf(
+			return karma.Format(
 				err,
 				"can't sync with remote",
 			)
@@ -421,7 +420,7 @@ func listSecrets(args map[string]interface{}) error {
 
 	masterKey, err := readMasterKey(args)
 	if err != nil {
-		return hierr.Errorf(err, "can't read master key")
+		return karma.Format(err, "can't read master key")
 	}
 
 	repo := git{
@@ -430,7 +429,7 @@ func listSecrets(args map[string]interface{}) error {
 
 	secrets, err := getSecretsFromRepo(repo, refNamespace, masterKey)
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't get secrets from repo '%s'", repoPath,
 		)
@@ -476,7 +475,7 @@ func removeSecret(args map[string]interface{}) error {
 
 	err = repo.removeRef(secret.ref.name)
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't remove ref '%s'", secret.ref.name,
 		)
@@ -524,7 +523,7 @@ func checkMasterPasswordCache(args map[string]interface{}) error {
 
 	_, err := readMasterKey(args)
 	if err != nil {
-		return hierr.Errorf(err, "can't read master key")
+		return karma.Format(err, "can't read master key")
 	}
 
 	return nil
@@ -545,7 +544,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 	if useCache {
 		masterKey, err := getMasterKeyFromCache(cacheFileName, repoPath)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err,
 				"can't retrieve master key from cache",
 			)
@@ -557,10 +556,10 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 	}
 
 	if stat, err := os.Stdin.Stat(); err != nil {
-		return nil, hierr.Errorf(err, "can't stat stdin")
+		return nil, karma.Format(err, "can't stat stdin")
 	} else {
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err, "interactive terminal required, pipe given",
 			)
 		}
@@ -574,14 +573,14 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		masterKey, err = terminal.ReadPassword(int(syscall.Stdin))
 		fmt.Fprintln(os.Stderr)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err, "can't read master password from terminal",
 			)
 		}
 	} else {
 		masterKey, err = ioutil.ReadFile(masterKeyFileName)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err, "can't read master password from file",
 			)
 		}
@@ -594,7 +593,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 	if useCache {
 		err := storeMasterKeyCache(repoPath, masterKey, cacheFileName)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err,
 				"can't store master key cache",
 			)
@@ -609,7 +608,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 func readPlainText() ([]byte, error) {
 	plaintext, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
-		return nil, hierr.Errorf(err, "can't read secret body")
+		return nil, karma.Format(err, "can't read secret body")
 	}
 
 	return plaintext, nil
@@ -620,7 +619,7 @@ func getSecretsFromRepo(
 ) ([]secret, error) {
 	encryptedTokens, err := repo.listRefs(refNamespace)
 	if err != nil {
-		return nil, hierr.Errorf(err, "can't get tokens")
+		return nil, karma.Format(err, "can't get tokens")
 	}
 
 	sort.Sort(encryptedTokens)
@@ -631,7 +630,7 @@ func getSecretsFromRepo(
 		hexToken := strings.TrimPrefix(ref.name, refNamespace)
 		blobBody, err := repo.catFile(ref.hash)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err,
 				"can't get ciphertext from",
 			)
@@ -639,7 +638,7 @@ func getSecretsFromRepo(
 
 		encryptedToken, err := hex.DecodeString(hexToken)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err,
 				"can't decode hex token '%s'", hexToken,
 			)
@@ -648,7 +647,7 @@ func getSecretsFromRepo(
 		secret, err := decryptBlob(encryptedToken, blobBody, masterKey)
 		if err != nil {
 			if err != errInvalidHMAC {
-				return nil, hierr.Errorf(
+				return nil, karma.Format(
 					err,
 					"can't decrypt blob for token '%s'", hexToken,
 				)
@@ -669,7 +668,7 @@ func storeMasterKeyCache(
 ) error {
 	machineKey, err := getUniqueMachineID()
 	if err != nil {
-		return hierr.Errorf(err, "can't obtain machine key")
+		return karma.Format(err, "can't obtain machine key")
 	}
 
 	encryptedToken, ciphertext, err := encryptBlob(
@@ -685,7 +684,7 @@ func storeMasterKeyCache(
 
 	err = os.MkdirAll(filepath.Dir(targetCacheName), 0700)
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't create dir for '%s'", targetCacheName,
 		)
@@ -695,7 +694,7 @@ func storeMasterKeyCache(
 		targetCacheName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600,
 	)
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't create cache file '%s' for master key",
 			targetCacheName,
@@ -704,7 +703,7 @@ func storeMasterKeyCache(
 
 	_, err = file.Write(ciphertext.getBody())
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't write encrypted master key to '%s'",
 			targetCacheName,
@@ -713,7 +712,7 @@ func storeMasterKeyCache(
 
 	err = file.Close()
 	if err != nil {
-		return hierr.Errorf(
+		return karma.Format(
 			err,
 			"can't close cache file '%s'", targetCacheName,
 		)
@@ -725,7 +724,7 @@ func storeMasterKeyCache(
 func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error) {
 	machineKey, err := getUniqueMachineID()
 	if err != nil {
-		return nil, hierr.Errorf(err, "can't obtain machine key")
+		return nil, karma.Format(err, "can't obtain machine key")
 	}
 
 	repoHash := getHash(repoPath)
@@ -733,7 +732,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 		cacheFileName + "." + repoHash + ".*",
 	)
 	if err != nil {
-		return nil, hierr.Errorf(
+		return nil, karma.Format(
 			err,
 			"can't glob for '%s.%s.*'", cacheFileName, repoHash,
 		)
@@ -747,7 +746,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 
 		encryptedKey, err := ioutil.ReadFile(candidate)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err,
 				"can't read encrypted master key from '%s'",
 				candidate,
@@ -756,7 +755,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 
 		encryptedToken, err := hex.DecodeString(hexToken)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err,
 				"can't decode hex token '%s'", hexToken,
 			)
@@ -765,7 +764,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 		secret, err := decryptBlob(encryptedToken, encryptedKey, machineKey)
 		if err != nil {
 			if err != errInvalidHMAC {
-				return nil, hierr.Errorf(
+				return nil, karma.Format(
 					err,
 					"can't decrypt master key from '%s'",
 					candidate,
@@ -777,7 +776,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 
 		masterKey, err := ioutil.ReadAll(secret.stream)
 		if err != nil {
-			return nil, hierr.Errorf(
+			return nil, karma.Format(
 				err,
 				"can't decrypt master key stream from '%s'",
 				candidate,

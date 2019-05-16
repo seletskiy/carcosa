@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/reconquest/hierr-go"
+	"github.com/reconquest/karma-go"
 )
 
 type remoteError struct {
@@ -21,7 +21,7 @@ func fetchRemote(repo git, remote string, refNamespace string) error {
 
 		err := repo.clone(remote)
 		if err != nil {
-			return hierr.Errorf(
+			return karma.Format(
 				err,
 				"can't clone git repo '%s'", remote,
 			)
@@ -35,7 +35,7 @@ func fetchRemote(repo git, remote string, refNamespace string) error {
 
 	err := repo.fetch(remote, refSpec)
 	if err != nil {
-		return remoteError{hierr.Errorf(
+		return remoteError{karma.Format(
 			err,
 			"can't pull remote '%s'", remote,
 		)}
@@ -57,7 +57,7 @@ func pushRemote(
 
 	err := repo.push(remote, refSpec, prune)
 	if err != nil {
-		return remoteError{hierr.Errorf(
+		return remoteError{karma.Format(
 			err,
 			"can't push to remote git repo '%s'", remote,
 		)}
