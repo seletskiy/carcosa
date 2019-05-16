@@ -59,7 +59,7 @@ passwords for different secrets.
 Remote sync is controlled via '-n' and '-y' flags, see more in usage.
 
 Usage:
-    carcosa [options] -h | --help
+    carcosa [options] -h | --help | --version
     carcosa [options] -S [-c] [-n] [-r <remote>]
     carcosa [options] -A [-c] [-n] <token>
     carcosa [options] -M [-c] [-n] <token>
@@ -87,7 +87,7 @@ Options:
     -s <ref-ns>    Use specified ref namespace.
                     [default: refs/tokens/]
     -p <path>      Set git repo path to store secrets in.
-                    [default: ` + filepath.Join("$HOME", ".secrets") + `]
+                    [default: $SECRETS_PATH]
     -n             Do not interact with remote repo (no push / no pull).
     -y             Sync with remote before doing anything else.
     -r <remote>    Remote repository name to use.
@@ -96,27 +96,33 @@ Options:
                     encrypted using unique encryption key for current machine.
     -f <cache>     Cache file prefix for master password. Actual file name will
                     ends with hash suffix.
-                    [default: ` + filepath.Join("$HOME", ".config", "carcosa", "master") + `]
+                    [default: $CACHE_PATH]
     -k <file>      Read master key from specified file. WARNING: that can be
                     unsecure; use of fifo pipe as a file is preferable.
     -e <editor>    Use specified editor for modifying secret in place.
                     [default: $EDITOR]
 `
 
-func getHomeDir() string {
+func init() {
 	human, err := user.Current()
 	if err != nil {
 		panic(err)
 	}
 
-	return human.HomeDir
+	home := human.HomeDir
+
+	usage = strings.NewReplacer(
+		"$EDITOR",
+		/* -> */ os.Getenv("EDITOR"),
+		"$SECRETS_PATH",
+		/* -> */ filepath.Join(home, ".secrets"),
+		"$CACHE_PATH",
+		/* -> */ filepath.Join(home, ".config", "carcosa", "master"),
+	).Replace(usage)
 }
 
 func main() {
-	usage := strings.Replace(usage, "$HOME", getHomeDir(), -1)
-	usage = strings.Replace(usage, "$EDITOR", os.Getenv("EDITOR"), -1)
-
-	args, err := docopt.Parse(usage, nil, true, "1", false)
+	args, err := docopt.Parse(usage, nil, true, "2", false)
 	if err != nil {
 		panic(err)
 	}
