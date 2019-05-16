@@ -17,8 +17,6 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/docopt/docopt-go"
-	"github.com/kovetskiy/lorg"
-	"github.com/reconquest/colorgful"
 	"github.com/reconquest/karma-go"
 )
 
@@ -105,8 +103,6 @@ Options:
                     [default: $EDITOR]
 `
 
-var log *lorg.Log
-
 func getHomeDir() string {
 	human, err := user.Current()
 	if err != nil {
@@ -117,16 +113,6 @@ func getHomeDir() string {
 }
 
 func main() {
-	log = lorg.NewLog()
-	{
-		theme := colorgful.MustApplyDefaultTheme(
-			`${time:2006-01-02 15:04:05.000} ${level:%s:left:true} %s`,
-			colorgful.Default,
-		)
-		log.SetFormat(theme)
-		log.SetOutput(theme)
-	}
-
 	usage := strings.Replace(usage, "$HOME", getHomeDir(), -1)
 	usage = strings.Replace(usage, "$EDITOR", os.Getenv("EDITOR"), -1)
 
