@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"os/user"
@@ -18,6 +17,8 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/docopt/docopt-go"
+	"github.com/kovetskiy/lorg"
+	"github.com/reconquest/colorgful"
 	"github.com/reconquest/karma-go"
 )
 
@@ -104,6 +105,8 @@ Options:
                     [default: $EDITOR]
 `
 
+var log *lorg.Log
+
 func getHomeDir() string {
 	human, err := user.Current()
 	if err != nil {
@@ -114,6 +117,16 @@ func getHomeDir() string {
 }
 
 func main() {
+	log = lorg.NewLog()
+	{
+		theme := colorgful.MustApplyDefaultTheme(
+			`${time:2006-01-02 15:04:05.000} ${level:%s:left:true} %s`,
+			colorgful.Default,
+		)
+		log.SetFormat(theme)
+		log.SetOutput(theme)
+	}
+
 	usage := strings.Replace(usage, "$HOME", getHomeDir(), -1)
 	usage = strings.Replace(usage, "$EDITOR", os.Getenv("EDITOR"), -1)
 
@@ -225,7 +238,7 @@ func modifySecret(args map[string]interface{}) error {
 	err = addSecret(args)
 	if err != nil {
 		if _, ok := err.(remoteError); ok {
-			log.Println(err)
+			log.Fatal(err)
 		} else {
 			return karma.Format(
 				err,
