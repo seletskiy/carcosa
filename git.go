@@ -22,38 +22,6 @@ type git struct {
 	path string
 }
 
-type ref struct {
-	name string
-	hash string
-	stat os.FileInfo
-}
-
-type refs []ref
-
-func (refs refs) Len() int {
-	return len(refs)
-}
-
-func (refs refs) Swap(i, j int) {
-	refs[i], refs[j] = refs[j], refs[i]
-}
-
-func (refs refs) Less(i, j int) bool {
-	if refs[i].stat == nil {
-		panic(
-			fmt.Sprintf("ref %s stat is nil", refs[i].hash),
-		)
-	}
-
-	if refs[j].stat == nil {
-		panic(
-			fmt.Sprintf("ref %s stat is nil", refs[j].hash),
-		)
-	}
-
-	return refs[i].stat.ModTime().Unix() < refs[j].stat.ModTime().Unix()
-}
-
 func (repo *git) updateRef(refName string, pointer string) error {
 	output, err := repo.cmd("update-ref", refName, pointer).CombinedOutput()
 	if err != nil {
@@ -239,6 +207,23 @@ func (repo *git) catFile(hash string) ([]byte, error) {
 	}
 
 	return output, nil
+}
+
+func (repo *git) renameRef(oldName string, newName string) error {
+	root := filepath.Join(repo.path, ".git")
+
+	err := os.Rename(
+		filepath.Join(root, oldName),
+		filepath.Join(root, newName),
+	)
+	if err != nil {
+		return karma.Format(
+			err,
+			"unable to rename ref",
+		)
+	}
+
+	return nil
 }
 
 func (repo *git) cmd(args ...string) *exec.Cmd {
