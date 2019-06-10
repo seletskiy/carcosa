@@ -1,138 +1,137 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/reconquest/karma-go"
+
+	git "gopkg.in/src-d/go-git.v4"
+	git_config "gopkg.in/src-d/go-git.v4/config"
+	git_plumbing "gopkg.in/src-d/go-git.v4/plumbing"
+	git_transport "gopkg.in/src-d/go-git.v4/plumbing/transport"
 )
 
-const (
-	PushPrune   = true
-	PushNoPrune = false
-)
-
-type git struct {
+type repo struct {
 	path string
+	git  *git.Repository
 }
 
-func (repo *git) updateRef(refName string, pointer string) error {
-	output, err := repo.cmd("update-ref", refName, pointer).CombinedOutput()
+func open(path string) (*repo, error) {
+	git, err := git.PlainOpen(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &repo{
+		path: path,
+		git:  git,
+	}, nil
+}
+
+func (repo *repo) update(ref ref) error {
+	output, err := repo.cmd("update-ref", ref.name, ref.hash).CombinedOutput()
 	if err != nil {
 		return karma.Format(
 			err,
-			"error executing git update-ref\n%s", bytes.TrimSpace(output),
+			"error executing repo update-ref\n%s", bytes.TrimSpace(output),
 		)
 	}
 
 	return nil
 }
 
-func (repo *git) removeRef(refName string) error {
-	output, err := repo.cmd("update-ref", "-d", refName).CombinedOutput()
+func (repo *repo) delete(ref ref) error {
+	output, err := repo.cmd("update-ref", "-d", ref.name).CombinedOutput()
 	if err != nil {
 		return karma.Format(
 			err,
-			"error executing git update-ref -d\n%s", bytes.TrimSpace(output),
+			"error executing repo update-ref -d\n%s", bytes.TrimSpace(output),
 		)
 	}
 
 	return nil
 }
 
-func (repo *git) writeObject(data []byte) (string, error) {
+func (repo *repo) write(data []byte) (string, error) {
 	cmd := repo.cmd("hash-object", "-w", "--stdin")
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return "", karma.Format(err, "can't get stdin for git hash-object")
+		return "", karma.Format(err, "can't get stdin for repo hash-object")
 	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", karma.Format(err, "can't get stdout for git hash-object")
+		return "", karma.Format(err, "can't get stdout for repo hash-object")
 	}
 
 	err = cmd.Start()
 	if err != nil {
 		return "", karma.Format(
 			err,
-			"can't run git hash-object",
+			"can't run repo hash-object",
 		)
 	}
 
 	_, err = stdin.Write(data)
 	if err != nil {
-		return "", karma.Format(err, "can't write data to git hash-object")
+		return "", karma.Format(err, "can't write data to repo hash-object")
 	}
 
 	err = stdin.Close()
 	if err != nil {
-		return "", karma.Format(err, "can't close git hash-object stdin")
+		return "", karma.Format(err, "can't close repo hash-object stdin")
 	}
 
 	output, err := ioutil.ReadAll(stdout)
 	if err != nil {
 		return "", karma.Format(
 			err,
-			"can't read git hash-object result",
+			"can't read repo hash-object result",
 		)
 	}
 
 	err = cmd.Wait()
 	if err != nil {
-		return "", karma.Format(err, "can't wait for git hash-object")
+		return "", karma.Format(err, "can't wait for repo hash-object")
 	}
 
 	return strings.TrimSpace(string(output)), nil
 }
 
-func (repo *git) listRefs(namespace string) (refs, error) {
-	output, err := repo.cmd("show-ref").CombinedOutput()
+func (repo *repo) list(ns string) (refs, error) {
+	references, err := repo.git.References()
 	if err != nil {
-		return nil, karma.Format(
-			err,
-			"error executing git show-ref\n%s", bytes.TrimSpace(output),
-		)
+		return nil, err
 	}
 
-	refList := []ref{}
-	scanner := bufio.NewScanner(bytes.NewBuffer(output))
-	for scanner.Scan() {
-		var hash, name string
+	var refs refs
 
-		_, err := fmt.Sscanf(scanner.Text(), "%s %s", &hash, &name)
-		if err != nil {
-			return nil, karma.Format(err, "can't read from git show-ref")
-		}
+	defer references.Close()
+	return refs, references.ForEach(
+		func(reference *git_plumbing.Reference) error {
+			ref := ref{
+				name: reference.Name().String(),
+				hash: reference.Hash().String(),
+			}
 
-		if !strings.HasPrefix(name, namespace) {
-			continue
-		}
+			if !strings.HasPrefix(ref.name, ns) {
+				return nil
+			}
 
-		stat, err := os.Stat(filepath.Join(repo.path, ".git", name))
-		if err != nil {
-			return nil, karma.Format(err, "can't stat() ref: %s", name)
-		}
+			refs = append(refs, ref)
 
-		refList = append(refList, ref{
-			name: name,
-			hash: hash,
-			stat: stat,
-		})
-	}
-
-	return refList, nil
+			return nil
+		},
+	)
 }
 
-func (repo *git) isGitRepo() bool {
-	err := repo.cmd("rev-parse", "--git-dir").Run()
+func (repo *repo) isGitRepo() bool {
+	err := repo.cmd("rev-parse", "--repo-dir").Run()
 	if err != nil {
 		return false
 	}
@@ -140,7 +139,7 @@ func (repo *git) isGitRepo() bool {
 	return true
 }
 
-func (repo *git) clone(remote string) error {
+func (repo *repo) clone(remote string) error {
 	cmd := repo.cmd("clone", "--depth=1", "--bare", "-n", remote, repo.path)
 
 	cmd.Stdout = os.Stdout
@@ -150,83 +149,59 @@ func (repo *git) clone(remote string) error {
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't run git clone '%s' -> '%s'", remote, repo.path,
+			"can't run repo clone '%s' -> '%s'", remote, repo.path,
 		)
 	}
 
 	return nil
 }
 
-func (repo *git) fetch(remote string, ref string) error {
-	cmd := repo.cmd("fetch", remote, ref)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return karma.Format(
-			err,
-			"can't run git fetch '%s' '%s'", remote, ref,
-		)
+func (repo *repo) fetch(remote string, spec refspec) error {
+	err := repo.git.Fetch(&git.FetchOptions{
+		RemoteName: remote,
+		RefSpecs:   []git_config.RefSpec{git_config.RefSpec(spec.to())},
+	})
+	switch err {
+	case nil:
+		return nil
+	case git_transport.ErrEmptyRemoteRepository:
+		log.Infof("remote repository is empty")
+		return nil
+	default:
+		return err
 	}
-
-	return nil
 }
 
-func (repo *git) push(remote string, ref string, prune bool) error {
-	args := []string{"push", remote, ref}
-
-	if prune {
-		args = append(args, "--prune")
+func (repo *repo) push(remote string, spec refspec) error {
+	err := repo.git.Push(&git.PushOptions{
+		RemoteName: remote,
+		RefSpecs:   []git_config.RefSpec{git_config.RefSpec(spec.from())},
+		Prune:      true,
+	})
+	switch err {
+	case nil:
+		return nil
+	case git.NoErrAlreadyUpToDate:
+		log.Infof("remote repository is up-to-date")
+		return nil
+	default:
+		return err
 	}
-
-	cmd := repo.cmd(args...)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return karma.Format(
-			err,
-			"can't run git push '%s' '%s'", remote, ref,
-		)
-	}
-
-	return nil
 }
 
-func (repo *git) catFile(hash string) ([]byte, error) {
+func (repo *repo) cat(hash string) ([]byte, error) {
 	output, err := repo.cmd("cat-file", "-p", hash).CombinedOutput()
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"error executing git cat-file\n%s", bytes.TrimSpace(output),
+			"error executing repo cat-file\n%s", bytes.TrimSpace(output),
 		)
 	}
 
 	return output, nil
 }
 
-func (repo *git) renameRef(oldName string, newName string) error {
-	root := filepath.Join(repo.path, ".git")
-
-	err := os.Rename(
-		filepath.Join(root, oldName),
-		filepath.Join(root, newName),
-	)
-	if err != nil {
-		return karma.Format(
-			err,
-			"unable to rename ref",
-		)
-	}
-
-	return nil
-}
-
-func (repo *git) cmd(args ...string) *exec.Cmd {
+func (repo *repo) cmd(args ...string) *exec.Cmd {
 	args = append([]string{"-C", repo.path}, args...)
 
 	command := exec.Command("git", args...)

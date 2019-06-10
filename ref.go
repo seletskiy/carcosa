@@ -6,12 +6,10 @@ import (
 	"strings"
 )
 
-type refSuffix string
-
-var (
-	refSuffixRemote refSuffix = "="
-	refSuffixAdd              = "+"
-	refSuffixDel              = "-"
+const (
+	theirs   = "="
+	addition = "+"
+	deletion = "-"
 )
 
 type ref struct {
@@ -20,26 +18,35 @@ type ref struct {
 	stat os.FileInfo
 }
 
-func (ref *ref) isAdd() bool {
-	return strings.HasSuffix(ref.name, refSuffixAdd)
-}
-
-func (ref *ref) isDel() bool {
-	return strings.HasSuffix(ref.name, refSuffixDel)
-}
-
-func (ref *ref) isRemote() bool {
-	return strings.HasSuffix(ref.name, refSuffixRemote)
-}
-
-func (ref *ref) token() string {
-	return strings.TrimRight(
+func (ref ref) token() ref {
+	ref.name = strings.TrimRight(
 		ref.name,
 		strings.Join(
-			[]string{refSuffixRemote, refSuffixAdd, refSuffixDel},
+			[]string{theirs, addition, deletion},
 			"",
 		),
 	)
+
+	return ref
+}
+
+func (ref *ref) is(mark string) bool {
+	return strings.HasSuffix(ref.name, mark)
+}
+
+func (ref ref) as(mark string) ref {
+	ref.name = ref.token().name + mark
+	return ref
+}
+
+type refspec string
+
+func (ns refspec) to() string {
+	return fmt.Sprintf("%[1]s/*:%[1]s/*=", strings.TrimSuffix(string(ns), "/"))
+}
+
+func (ns refspec) from() string {
+	return fmt.Sprintf("%[1]s/*=:%[1]s/*", strings.TrimSuffix(string(ns), "/"))
 }
 
 type refs []ref

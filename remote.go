@@ -1,101 +1,127 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/reconquest/karma-go"
 )
 
-type remoteError struct{ error }
+func sync(repo *repo, remote string, ns string) error {
+	//if !repo.isGitRepo() {
+	//    if remote == "origin" {
+	//        return fmt.Errorf(
+	//            "directory is not a git repo and remote is not specified",
+	//        )
+	//    }
 
-func fetchRemote(repo git, remote string, refNamespace string) error {
-	if !repo.isGitRepo() {
-		if remote == "origin" {
-			return fmt.Errorf(
-				"directory is not a git repo and remote is not specified",
-			)
-		}
+	//    err := repo.clone(remote)
+	//    if err != nil {
+	//        return karma.Format(
+	//            err,
+	//            "can't clone git repo '%s'", remote,
+	//        )
+	//    }
+	//}
 
-		err := repo.clone(remote)
-		if err != nil {
-			return karma.Format(
-				err,
-				"can't clone git repo '%s'", remote,
-			)
-		}
-	}
-
-	refSpec := fmt.Sprintf(
-		"%[1]s/*:%[1]s/*%[2]s",
-		strings.TrimSuffix(refNamespace, "/"),
-		refSuffixRemote,
-	)
-
-	err := repo.fetch(remote, refSpec)
+	err := repo.fetch(remote, refspec(ns))
 	if err != nil {
-		return remoteError{
-			karma.Format(
-				err,
-				"can't pull remote '%s'", remote,
-			),
-		}
+		return karma.Format(
+			err,
+			"can't pull remote '%s'", remote,
+		)
 	}
 
-	refs, err := repo.listRefs(refNamespace)
+	refs, err := repo.list(ns)
 	if err != nil {
 		return err
 	}
 
 	var (
-		theirs = []ref{}
-
-		ours = map[string]bool{}
-		add  = map[string]bool{}
-		del  = map[string]bool{}
+		thys = map[string]ref{}
+		ours = map[string]ref{}
+		adds = map[string]ref{}
+		dels = map[string]ref{}
 	)
 
 	for _, ref := range refs {
 		switch {
-		case ref.isAdd():
-			add[ref.token()] = true
-
-		case ref.isDel():
-			del[ref.token()] = true
-
-		case ref.isRemote():
-			theirs = append(theirs, ref)
-
+		case ref.is(addition):
+			adds[ref.token().name] = ref
+		case ref.is(deletion):
+			dels[ref.token().name] = ref
+		case ref.is(theirs):
+			thys[ref.token().name] = ref
 		default:
-			ours[ref.token()] = true
+			ours[ref.token().name] = ref
 		}
 	}
 
-	for _, their := range theirs {
+	for token, ref := range adds {
+		err := repo.delete(ref)
+		if err != nil {
+			return err
+		}
+
+		thys[token] = ref.as(theirs)
+
+		err = repo.update(thys[token])
+		if err != nil {
+			return err
+		}
 	}
 
-	return nil
-}
+	if len(thys) != 0 {
+		for token, ref := range dels {
+			err := repo.delete(ref)
+			if err != nil {
+				return err
+			}
 
-func pushRemote(
-	repo git,
-	remote string,
-	refNamespace string,
-	prune bool,
-) error {
-	refSpec := fmt.Sprintf(
-		"%[1]s/*%[2]s:%[1]s/*",
-		strings.TrimSuffix(refNamespace, "/"),
-		refSuffixRemote,
-	)
+			if ref, ok := thys[token]; ok {
+				err := repo.delete(ref)
+				if err != nil {
+					return err
+				}
 
-	err := repo.push(remote, refSpec, prune)
-	if err != nil {
-		return remoteError{
-			karma.Format(
+				delete(thys, token)
+
+				ref.hash = strings.Repeat("0", 40)
+				err = repo.update(ref)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		err = repo.push(remote, refspec(ns))
+		if err != nil {
+			return karma.Format(
 				err,
-				"can't push to remote git repo '%s'", remote,
-			),
+				"can't push to remote '%s'", remote,
+			)
+		}
+	}
+
+	for token, ref := range ours {
+		if _, ok := thys[token]; !ok {
+			err := repo.delete(ref)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	for token, ref := range thys {
+		if _, ok := ours[token]; !ok {
+			err := repo.update(ref.token())
+			if err != nil {
+				return err
+			}
+		}
+
+		err = repo.delete(ref)
+		if err != nil {
+			return err
 		}
 	}
 

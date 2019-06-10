@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 
@@ -151,11 +150,11 @@ func main() {
 
 func addSecret(args map[string]interface{}) error {
 	var (
-		token        = []byte(args["<token>"].(string))
-		refNamespace = args["-s"].(string)
-		repoPath     = args["-p"].(string)
-		remote       = args["-r"].(string)
-		doSync       = !args["-n"].(bool)
+		token    = []byte(args["<token>"].(string))
+		ns       = args["-s"].(string)
+		repoPath = args["-p"].(string)
+		remote   = args["-r"].(string)
+		doSync   = !args["-n"].(bool)
 	)
 
 	masterKey, err := readMasterKey(args)
@@ -168,8 +167,9 @@ func addSecret(args map[string]interface{}) error {
 		return karma.Format(err, "can't read plaintext")
 	}
 
-	repo := git{
-		path: repoPath,
+	repo, err := open(repoPath)
+	if err != nil {
+		return err
 	}
 
 	encryptedToken, ciphertext, err := encryptBlob(token, plaintext, masterKey)
@@ -177,20 +177,31 @@ func addSecret(args map[string]interface{}) error {
 		return karma.Format(err, "can't encrypt blob")
 	}
 
-	hash, err := repo.writeObject(ciphertext.getBody())
+	hash, err := repo.write(ciphertext.getBody())
 	if err != nil {
 		return karma.Format(err, "can't write Git object with ciphertext")
 	}
 
-	err = repo.updateRef(
-		filepath.Join(refNamespace, hex.EncodeToString(encryptedToken)), hash,
-	)
+	ref := ref{
+		name: filepath.Join(ns, hex.EncodeToString(encryptedToken)),
+		hash: hash,
+	}
+
+	err = repo.update(ref)
 	if err != nil {
 		return karma.Format(err, "can't set ref for Git object '%s'", hash)
 	}
 
+	err = repo.update(ref.as(addition))
+	if err != nil {
+		return karma.Format(
+			err,
+			"can't mark ref '%s' as deleted", ref.name,
+		)
+	}
+
 	if doSync {
-		err := pushRemote(repo, remote, refNamespace, PushNoPrune)
+		err := sync(repo, remote, ns)
 		if err != nil {
 			return karma.Format(err, "can't sync with remote")
 		}
@@ -229,14 +240,10 @@ func modifySecret(args map[string]interface{}) error {
 	args["-n"] = true
 	err = addSecret(args)
 	if err != nil {
-		if _, ok := err.(remoteError); ok {
-			log.Fatal(err)
-		} else {
-			return karma.Format(
-				err,
-				"can't add modified secret",
-			)
-		}
+		return karma.Format(
+			err,
+			"can't add modified secret",
+		)
 	}
 
 	if secret != nil {
@@ -319,19 +326,20 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 func extractSecret(args map[string]interface{}) (*secret, error) {
 	var (
-		token        = args["<token>"].(string)
-		refNamespace = args["-s"].(string)
-		repoPath     = args["-p"].(string)
-		syncFirst    = args["-y"].(bool)
-		remote       = args["-r"].(string)
+		token     = args["<token>"].(string)
+		ns        = args["-s"].(string)
+		repoPath  = args["-p"].(string)
+		syncFirst = args["-y"].(bool)
+		remote    = args["-r"].(string)
 	)
 
-	repo := git{
-		path: repoPath,
+	repo, err := open(repoPath)
+	if err != nil {
+		return nil, err
 	}
 
 	if syncFirst {
-		err := fetchRemote(repo, remote, refNamespace)
+		err := sync(repo, remote, ns)
 		if err != nil {
 			return nil, karma.Format(
 				err,
@@ -345,7 +353,7 @@ func extractSecret(args map[string]interface{}) (*secret, error) {
 		return nil, karma.Format(err, "can't read master key")
 	}
 
-	secrets, err := getSecretsFromRepo(repo, refNamespace, masterKey)
+	secrets, err := getSecretsFromRepo(repo, ns, masterKey)
 	if err != nil {
 		return nil, karma.Format(
 			err,
@@ -408,9 +416,9 @@ func getSecret(args map[string]interface{}) error {
 
 func listSecrets(args map[string]interface{}) error {
 	var (
-		refNamespace = args["-s"].(string)
-		repoPath     = args["-p"].(string)
-		syncFirst    = args["-y"].(bool)
+		ns        = args["-s"].(string)
+		repoPath  = args["-p"].(string)
+		syncFirst = args["-y"].(bool)
 	)
 
 	if syncFirst {
@@ -428,11 +436,12 @@ func listSecrets(args map[string]interface{}) error {
 		return karma.Format(err, "can't read master key")
 	}
 
-	repo := git{
-		path: repoPath,
+	repo, err := open(repoPath)
+	if err != nil {
+		return err
 	}
 
-	secrets, err := getSecretsFromRepo(repo, refNamespace, masterKey)
+	secrets, err := getSecretsFromRepo(repo, ns, masterKey)
 	if err != nil {
 		return karma.Format(
 			err,
@@ -455,11 +464,11 @@ func listSecrets(args map[string]interface{}) error {
 
 func removeSecret(args map[string]interface{}) error {
 	var (
-		token        = args["<token>"].(string)
-		repoPath     = args["-p"].(string)
-		refNamespace = args["-s"].(string)
-		remote       = args["-r"].(string)
-		doPush       = !args["-n"].(bool)
+		token    = args["<token>"].(string)
+		repoPath = args["-p"].(string)
+		ns       = args["-s"].(string)
+		remote   = args["-r"].(string)
+		doPush   = !args["-n"].(bool)
 	)
 
 	secret, err := extractSecret(args)
@@ -474,11 +483,12 @@ func removeSecret(args map[string]interface{}) error {
 		)
 	}
 
-	repo := git{
-		path: repoPath,
+	repo, err := open(repoPath)
+	if err != nil {
+		return err
 	}
 
-	err = repo.removeRef(secret.ref.name)
+	err = repo.delete(secret.ref)
 	if err != nil {
 		return karma.Format(
 			err,
@@ -486,8 +496,16 @@ func removeSecret(args map[string]interface{}) error {
 		)
 	}
 
+	err = repo.update(secret.ref.as(deletion))
+	if err != nil {
+		return karma.Format(
+			err,
+			"can't mark ref '%s' as deleted", secret.ref.name,
+		)
+	}
+
 	if doPush {
-		err := pushRemote(repo, remote, refNamespace, PushPrune)
+		err := sync(repo, remote, ns)
 		if err != nil {
 			return err
 		}
@@ -498,26 +516,20 @@ func removeSecret(args map[string]interface{}) error {
 
 func syncSecrets(args map[string]interface{}) error {
 	var (
-		refNamespace = args["-s"].(string)
-		repoPath     = args["-p"].(string)
-		remote       = args["-r"].(string)
-		doPush       = !args["-n"].(bool)
+		ns       = args["-s"].(string)
+		repoPath = args["-p"].(string)
+		remote   = args["-r"].(string)
+		//doPush       = !args["-n"].(bool)
 	)
 
-	repo := git{
-		path: repoPath,
-	}
-
-	err := fetchRemote(repo, remote, refNamespace)
+	repo, err := open(repoPath)
 	if err != nil {
 		return err
 	}
 
-	if doPush {
-		err := pushRemote(repo, remote, refNamespace, PushNoPrune)
-		if err != nil {
-			return err
-		}
+	err = sync(repo, remote, ns)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -560,20 +572,20 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		}
 	}
 
-	if stat, err := os.Stdin.Stat(); err != nil {
-		return nil, karma.Format(err, "can't stat stdin")
-	} else {
-		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			return nil, karma.Format(
-				err, "interactive terminal required, pipe given",
-			)
-		}
-	}
-
 	var masterKey []byte
 	var err error
 
 	if masterKeyFileName == "" {
+		if stat, err := os.Stdin.Stat(); err != nil {
+			return nil, karma.Format(err, "can't stat stdin")
+		} else {
+			if (stat.Mode() & os.ModeCharDevice) == 0 {
+				return nil, karma.Format(
+					err, "interactive terminal required, pipe given",
+				)
+			}
+		}
+
 		fmt.Fprint(os.Stderr, "Enter master password: ")
 		masterKey, err = terminal.ReadPassword(int(syscall.Stdin))
 		fmt.Fprintln(os.Stderr)
@@ -620,20 +632,24 @@ func readPlainText() ([]byte, error) {
 }
 
 func getSecretsFromRepo(
-	repo git, refNamespace string, masterKey []byte,
+	repo *repo, ns string, masterKey []byte,
 ) ([]secret, error) {
-	encryptedTokens, err := repo.listRefs(refNamespace)
+	refs, err := repo.list(ns)
 	if err != nil {
 		return nil, karma.Format(err, "can't get tokens")
 	}
 
-	sort.Sort(encryptedTokens)
+	//sort.Sort(refs)
 
 	secrets := []secret{}
 
-	for _, ref := range encryptedTokens {
-		hexToken := strings.TrimPrefix(ref.name, refNamespace)
-		blobBody, err := repo.catFile(ref.hash)
+	for _, ref := range refs {
+		if ref.name != ref.token().name {
+			continue
+		}
+
+		hexToken := strings.TrimPrefix(ref.name, ns)
+		blobBody, err := repo.cat(ref.hash)
 		if err != nil {
 			return nil, karma.Format(
 				err,
