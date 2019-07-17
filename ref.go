@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	theirs   = "="
+	external = "="
 	addition = "+"
 	deletion = "-"
 )
@@ -22,7 +22,7 @@ func (ref ref) token() ref {
 	ref.name = strings.TrimRight(
 		ref.name,
 		strings.Join(
-			[]string{theirs, addition, deletion},
+			[]string{external, addition, deletion},
 			"",
 		),
 	)

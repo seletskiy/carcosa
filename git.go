@@ -1,18 +1,17 @@
 package main
 
 import (
-	"bytes"
 	"io/ioutil"
-	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/reconquest/karma-go"
+	"golang.org/x/crypto/ssh"
 
 	git "gopkg.in/src-d/go-git.v4"
 	git_config "gopkg.in/src-d/go-git.v4/config"
 	git_plumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	git_transport "gopkg.in/src-d/go-git.v4/plumbing/transport"
+	git_ssh "gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
 
 type repo struct {
@@ -23,7 +22,7 @@ type repo struct {
 func open(path string) (*repo, error) {
 	git, err := git.PlainOpen(path)
 	if err != nil {
-		return nil, err
+		return nil, karma.Format(err, "unable to open git repository %q", path)
 	}
 
 	return &repo{
@@ -33,11 +32,17 @@ func open(path string) (*repo, error) {
 }
 
 func (repo *repo) update(ref ref) error {
-	output, err := repo.cmd("update-ref", ref.name, ref.hash).CombinedOutput()
+	log.Debugf("{update} %s > %s", ref.hash, ref.name)
+
+	err := repo.git.Storer.SetReference(
+		git_plumbing.NewReferenceFromStrings(ref.name, ref.hash),
+	)
 	if err != nil {
 		return karma.Format(
 			err,
-			"error executing repo update-ref\n%s", bytes.TrimSpace(output),
+			"unable to update reference %q -> %q",
+			ref.name,
+			ref.hash,
 		)
 	}
 
@@ -45,11 +50,16 @@ func (repo *repo) update(ref ref) error {
 }
 
 func (repo *repo) delete(ref ref) error {
-	output, err := repo.cmd("update-ref", "-d", ref.name).CombinedOutput()
+	log.Tracef("{delete} %s - %s", ref.hash, ref.name)
+
+	err := repo.git.Storer.RemoveReference(
+		git_plumbing.ReferenceName(ref.name),
+	)
 	if err != nil {
 		return karma.Format(
 			err,
-			"error executing repo update-ref -d\n%s", bytes.TrimSpace(output),
+			"unable to delete reference %q",
+			ref.name,
 		)
 	}
 
@@ -57,62 +67,40 @@ func (repo *repo) delete(ref ref) error {
 }
 
 func (repo *repo) write(data []byte) (string, error) {
-	cmd := repo.cmd("hash-object", "-w", "--stdin")
+	var blob git_plumbing.MemoryObject
 
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return "", karma.Format(err, "can't get stdin for repo hash-object")
-	}
+	blob.SetType(git_plumbing.BlobObject)
+	blob.Write(data)
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", karma.Format(err, "can't get stdout for repo hash-object")
-	}
-
-	err = cmd.Start()
+	hash, err := repo.git.Storer.SetEncodedObject(&blob)
 	if err != nil {
 		return "", karma.Format(
 			err,
-			"can't run repo hash-object",
+			"unable to set encoded object (len=%d)",
+			len(data),
 		)
 	}
 
-	_, err = stdin.Write(data)
-	if err != nil {
-		return "", karma.Format(err, "can't write data to repo hash-object")
-	}
-
-	err = stdin.Close()
-	if err != nil {
-		return "", karma.Format(err, "can't close repo hash-object stdin")
-	}
-
-	output, err := ioutil.ReadAll(stdout)
-	if err != nil {
-		return "", karma.Format(
-			err,
-			"can't read repo hash-object result",
-		)
-	}
-
-	err = cmd.Wait()
-	if err != nil {
-		return "", karma.Format(err, "can't wait for repo hash-object")
-	}
-
-	return strings.TrimSpace(string(output)), nil
+	return hash.String(), nil
 }
 
 func (repo *repo) list(ns string) (refs, error) {
-	references, err := repo.git.References()
+	log.Tracef("{list} %s ?", ns)
+
+	list, err := repo.git.References()
 	if err != nil {
-		return nil, err
+		return nil, karma.Format(
+			err,
+			"unable to list references",
+		)
 	}
 
 	var refs refs
 
-	defer references.Close()
-	return refs, references.ForEach(
+	defer list.Close()
+	defer func() { log.Tracef("{list} %s = %d refs", ns, len(refs)) }()
+
+	return refs, list.ForEach(
 		func(reference *git_plumbing.Reference) error {
 			ref := ref{
 				name: reference.Name().String(),
@@ -130,50 +118,79 @@ func (repo *repo) list(ns string) (refs, error) {
 	)
 }
 
-func (repo *repo) isGitRepo() bool {
-	err := repo.cmd("rev-parse", "--repo-dir").Run()
+//func (repo *repo) clone(remote string) error {
+//    cmd := repo.cmd("clone", "--depth=1", "--bare", "-n", remote, repo.path)
+
+//    cmd.Stdout = os.Stdout
+//    cmd.Stderr = os.Stderr
+
+//    err := cmd.Run()
+//    if err != nil {
+//        return karma.Format(
+//            err,
+//            "can't run repo clone '%s' -> '%s'", remote, repo.path,
+//        )
+//    }
+
+//    return nil
+//}
+
+func (repo *repo) auth() git_transport.AuthMethod {
+	var auth git_transport.AuthMethod
+
+	path := "/home/operator/.ssh/id_rsa"
+	sshKey, err := ioutil.ReadFile(path)
 	if err != nil {
-		return false
+		panic(err)
+	}
+	signer, err := ssh.ParsePrivateKey([]byte(sshKey))
+	if err != nil {
+		panic(err)
+	}
+	auth = &git_ssh.PublicKeys{
+		User:   "git",
+		Signer: signer,
 	}
 
-	return true
+	return auth
 }
 
-func (repo *repo) clone(remote string) error {
-	cmd := repo.cmd("clone", "--depth=1", "--bare", "-n", remote, repo.path)
+func (repo *repo) pull(remote string, spec refspec) error {
+	log.Debugf("{pull} %s %s", remote, spec.to())
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return karma.Format(
-			err,
-			"can't run repo clone '%s' -> '%s'", remote, repo.path,
-		)
-	}
-
-	return nil
-}
-
-func (repo *repo) fetch(remote string, spec refspec) error {
 	err := repo.git.Fetch(&git.FetchOptions{
+		Auth:       repo.auth(),
 		RemoteName: remote,
 		RefSpecs:   []git_config.RefSpec{git_config.RefSpec(spec.to())},
 	})
 	switch err {
 	case nil:
 		return nil
+	case git.NoErrAlreadyUpToDate:
+		return nil
 	case git_transport.ErrEmptyRemoteRepository:
 		log.Infof("remote repository is empty")
 		return nil
 	default:
-		return err
+		return karma.Format(
+			err,
+			"unable to fetch remote %q",
+			remote,
+		)
 	}
 }
 
 func (repo *repo) push(remote string, spec refspec) error {
-	err := repo.git.Push(&git.PushOptions{
+	log.Debugf("{push} %s %s", remote, spec.from())
+
+	rem, err := repo.git.Remote(remote)
+	if err != nil {
+		return err
+	}
+
+	rem.Config().Fetch = []git_config.RefSpec{git_config.RefSpec(spec.to())}
+	err = rem.Push(&git.PushOptions{
+		Auth:       repo.auth(),
 		RemoteName: remote,
 		RefSpecs:   []git_config.RefSpec{git_config.RefSpec(spec.from())},
 		Prune:      true,
@@ -185,27 +202,45 @@ func (repo *repo) push(remote string, spec refspec) error {
 		log.Infof("remote repository is up-to-date")
 		return nil
 	default:
-		return err
+		return karma.Format(
+			err,
+			"unable to push to remote %q",
+			remote,
+		)
 	}
 }
 
 func (repo *repo) cat(hash string) ([]byte, error) {
-	output, err := repo.cmd("cat-file", "-p", hash).CombinedOutput()
+	log.Tracef("{cat} %s ?", hash)
+
+	blob, err := repo.git.BlobObject(git_plumbing.NewHash(hash))
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"error executing repo cat-file\n%s", bytes.TrimSpace(output),
+			"unable to get blob %q",
+			hash,
 		)
 	}
 
-	return output, nil
-}
+	reader, err := blob.Reader()
+	if err != nil {
+		return nil, karma.Format(
+			err,
+			"unable to get reader for blob %q",
+			hash,
+		)
+	}
 
-func (repo *repo) cmd(args ...string) *exec.Cmd {
-	args = append([]string{"-C", repo.path}, args...)
+	data, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return nil, karma.Format(
+			err,
+			"unable to read blob contents %q",
+			hash,
+		)
+	}
 
-	command := exec.Command("git", args...)
-	command.Env = []string{}
+	log.Tracef("{cat} %s = %d bytes", hash, len(data))
 
-	return command
+	return data, nil
 }

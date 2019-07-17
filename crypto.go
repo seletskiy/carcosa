@@ -27,7 +27,7 @@ type secret struct {
 }
 
 type blob struct {
-	HMAC  func() hash.Hash
+	hmac  func() hash.Hash
 	block cipher.Block
 	body  []byte
 }
@@ -56,7 +56,7 @@ func (data *blob) getBlockSize() int {
 }
 
 func (data *blob) getHMACSize() int {
-	return data.HMAC().Size()
+	return data.hmac().Size()
 }
 
 func (data *blob) getInitVector() []byte {
@@ -84,7 +84,7 @@ var (
 
 func decryptBlob(token []byte, body []byte, password []byte) (*secret, error) {
 	ciphertext := blob{
-		HMAC: newHMAC,
+		hmac: newHMAC,
 		body: body,
 	}
 
@@ -108,7 +108,7 @@ func decryptBlob(token []byte, body []byte, password []byte) (*secret, error) {
 	decrypter.XORKeyStream(tokenMAC, ciphertext.getTokenHMAC())
 
 	decryptedToken := unpadBytes(paddedToken)
-	expectedTokenMAC, err := calcHMAC(ciphertext.HMAC, decryptedToken, key)
+	expectedTokenMAC, err := calcHMAC(ciphertext.hmac, decryptedToken, key)
 
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func encryptBlob(
 	token []byte, plaintext []byte, password []byte,
 ) (encryptedToken []byte, ciphertext *blob, err error) {
 	ciphertext = &blob{
-		HMAC: sha256.New,
+		hmac: sha256.New,
 	}
 
 	initVector := make([]byte, cipherBlockSize)
@@ -159,7 +159,7 @@ func encryptBlob(
 	encryptedToken = make([]byte, len(paddedToken))
 	encrypter.XORKeyStream(encryptedToken, paddedToken)
 
-	tokenMAC, err := calcHMAC(ciphertext.HMAC, token, key)
+	tokenMAC, err := calcHMAC(ciphertext.hmac, token, key)
 	if err != nil {
 		return nil, nil, err
 	}

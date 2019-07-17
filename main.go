@@ -16,12 +16,11 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/docopt/docopt-go"
+	"github.com/kovetskiy/lorg"
 	"github.com/reconquest/karma-go"
 )
 
 var globalMasterKey []byte
-
-const tokenHashDelimiter = "::"
 
 var usage = `carcosa - git-backed secrets storage.
 
@@ -58,14 +57,14 @@ passwords for different secrets.
 Remote sync is controlled via '-n' and '-y' flags, see more in usage.
 
 Usage:
-    carcosa [options] -h | --help | --version
-    carcosa [options] -S [-c] [-n] [-r <remote>]
-    carcosa [options] -A [-c] [-n] <token>
-    carcosa [options] -M [-c] [-n] <token>
-    carcosa [options] -G [-c] [-y] <token>
-    carcosa [options] -L [-c] [-y]
-    carcosa [options] -R [-c] [-n] <token>
-    carcosa [options] -F -c
+    carcosa [options] [-v]... -h | --help | --version
+    carcosa [options] [-v]... -S [-c] [-n] [-r <remote>]
+    carcosa [options] [-v]... -A [-c] [-n] <token>
+    carcosa [options] [-v]... -M [-c] [-n] <token>
+    carcosa [options] [-v]... -G [-c] [-y] <token>
+    carcosa [options] [-v]... -L [-c] [-y]
+    carcosa [options] [-v]... -R [-c] [-n] <token>
+    carcosa [options] [-v]... -F -c
 
 Options:
     -h --help      Show this help.
@@ -100,7 +99,29 @@ Options:
                     unsecure; use of fifo pipe as a file is preferable.
     -e <editor>    Use specified editor for modifying secret in place.
                     [default: $EDITOR]
+    -v             Verbose output.
 `
+
+type Opts struct {
+	ArgToken             string `docopt:"<token>"`
+	ModeSync             bool   `docopt:"--sync"`
+	ModeAdd              bool   `docopt:"--add"`
+	ModeModify           bool   `docopt:"--modify"`
+	ModeGet              bool   `docopt:"--get"`
+	ModeList             bool   `docopt:"--list"`
+	ModeRemove           bool   `docopt:"--remove"`
+	ModeKeycheck         bool   `docopt:"--keycheck"`
+	ValueNamespace       string `docopt:"-s"`
+	ValuePath            string `docopt:"-p"`
+	ValueRemote          string `docopt:"-r"`
+	ValueMasterCachePath string `docopt:"-f"`
+	ValueMasterFile      string `docopt:"-k"`
+	ValueEditor          string `docopt:"-e"`
+	FlagNoSync           bool   `docopt:"-n"`
+	FlagSyncFirst        bool   `docopt:"-y"`
+	FlagUseMasterCache   bool   `docopt:"-c"`
+	FlagVerbose          int    `docopt:"-v"`
+}
 
 func init() {
 	human, err := user.Current()
@@ -121,26 +142,42 @@ func init() {
 }
 
 func main() {
-	args, err := docopt.Parse(usage, nil, true, "2", false)
+	args, err := docopt.ParseArgs(usage, nil, "2")
 	if err != nil {
 		panic(err)
 	}
 
+	var opts Opts
+
+	err = args.Bind(&opts)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	switch opts.FlagVerbose {
+	case 0:
+		log.SetLevel(lorg.LevelInfo)
+	case 1:
+		log.SetLevel(lorg.LevelDebug)
+	default:
+		log.SetLevel(lorg.LevelTrace)
+	}
+
 	switch {
-	case args["--sync"].(bool):
-		err = syncSecrets(args)
-	case args["--add"].(bool):
-		err = addSecret(args)
-	case args["--get"].(bool):
-		err = getSecret(args)
-	case args["--list"].(bool):
-		err = listSecrets(args)
-	case args["--modify"].(bool):
-		err = modifySecret(args)
-	case args["--remove"].(bool):
-		err = removeSecret(args)
-	case args["--keycheck"].(bool):
-		err = checkMasterPasswordCache(args)
+	case opts.ModeSync:
+		err = syncSecrets(opts)
+	case opts.ModeAdd:
+		err = addSecret(opts)
+	case opts.ModeGet:
+		err = getSecret(opts)
+	case opts.ModeList:
+		err = listSecrets(opts)
+	case opts.ModeModify:
+		err = modifySecret(opts)
+	case opts.ModeRemove:
+		err = removeSecret(opts)
+	case opts.ModeKeycheck:
+		err = checkMasterPasswordCache(opts)
 	}
 
 	if err != nil {
@@ -148,23 +185,18 @@ func main() {
 	}
 }
 
-func addSecret(args map[string]interface{}) error {
+func addSecret(opts Opts) error {
 	var (
-		token    = []byte(args["<token>"].(string))
-		ns       = args["-s"].(string)
-		repoPath = args["-p"].(string)
-		remote   = args["-r"].(string)
-		doSync   = !args["-n"].(bool)
+		token    = opts.ArgToken
+		ns       = opts.ValueNamespace
+		repoPath = opts.ValuePath
+		remote   = opts.ValueRemote
+		doSync   = !opts.FlagNoSync
 	)
 
-	masterKey, err := readMasterKey(args)
+	masterKey, err := readMasterKey(opts)
 	if err != nil {
-		return karma.Format(err, "can't read master key")
-	}
-
-	plaintext, err := readPlainText()
-	if err != nil {
-		return karma.Format(err, "can't read plaintext")
+		return karma.Format(err, "unable to read master key")
 	}
 
 	repo, err := open(repoPath)
@@ -172,14 +204,40 @@ func addSecret(args map[string]interface{}) error {
 		return err
 	}
 
-	encryptedToken, ciphertext, err := encryptBlob(token, plaintext, masterKey)
+	secrets, err := getSecretsFromRepo(repo, ns, masterKey)
 	if err != nil {
-		return karma.Format(err, "can't encrypt blob")
+		return karma.Format(
+			err,
+			"unable to get secrets from repo %q", repoPath,
+		)
+	}
+
+	for _, secret := range secrets {
+		if secret.token == token {
+			return fmt.Errorf(
+				"secret with name %q already exists",
+				token,
+			)
+		}
+	}
+
+	plaintext, err := ioutil.ReadAll(os.Stdin)
+	if err != nil {
+		return karma.Format(err, "unable to read secret body")
+	}
+
+	encryptedToken, ciphertext, err := encryptBlob(
+		[]byte(token),
+		plaintext,
+		masterKey,
+	)
+	if err != nil {
+		return karma.Format(err, "unable to encrypt blob")
 	}
 
 	hash, err := repo.write(ciphertext.getBody())
 	if err != nil {
-		return karma.Format(err, "can't write Git object with ciphertext")
+		return karma.Format(err, "unable to write git object with ciphertext")
 	}
 
 	ref := ref{
@@ -189,84 +247,68 @@ func addSecret(args map[string]interface{}) error {
 
 	err = repo.update(ref)
 	if err != nil {
-		return karma.Format(err, "can't set ref for Git object '%s'", hash)
+		return karma.Format(err, "unable to set ref for git object %q", hash)
 	}
 
 	err = repo.update(ref.as(addition))
 	if err != nil {
-		return karma.Format(
-			err,
-			"can't mark ref '%s' as deleted", ref.name,
-		)
+		return karma.Format(err, "unable to mark ref %q as added", ref.name)
 	}
 
 	if doSync {
 		err := sync(repo, remote, ns)
 		if err != nil {
-			return karma.Format(err, "can't sync with remote")
+			return karma.Format(err, "unable to sync with remote")
 		}
 	}
 
 	return nil
 }
 
-func modifySecret(args map[string]interface{}) error {
+func modifySecret(opts Opts) error {
 	var (
-		editor = args["-e"].(string)
-		noPush = args["-n"].(bool)
+		editor = opts.ValueEditor
+		noSync = opts.FlagNoSync
 	)
 
-	secret, err := extractSecret(args)
+	secret, err := extractSecret(opts)
 	if err != nil {
 		return err
 	}
 
-	plaintext := []byte{}
-	if secret != nil {
-		plaintext, err = ioutil.ReadAll(secret.stream)
-		if err != nil {
-			return karma.Format(
-				err,
-				"can't obtain plaintext from secret",
-			)
-		}
+	plaintext, err := ioutil.ReadAll(secret.stream)
+	if err != nil {
+		return karma.Format(err, "unable to obtain plaintext from secret")
 	}
 
 	os.Stdin, err = openEditor(editor, plaintext)
 	if err != nil {
-		return karma.Format(err, "can't edit secret's text")
+		return karma.Format(err, "unable to edit secret's text")
 	}
 
-	args["-n"] = true
-	err = addSecret(args)
+	defer func() { os.Remove(os.Stdin.Name()) }()
+
+	opts.FlagNoSync = true
+	err = removeSecret(opts)
 	if err != nil {
-		return karma.Format(
-			err,
-			"can't add modified secret",
-		)
+		return karma.Format(err, "unable to remove old secret")
 	}
 
-	if secret != nil {
-		args["<token>"] = secret.token + tokenHashDelimiter + secret.hash
-		args["-n"] = noPush
-		err = removeSecret(args)
-		if err != nil {
-			return karma.Format(
-				err,
-				"can't remove old secret",
-			)
-		}
+	opts.FlagNoSync = noSync
+	err = addSecret(opts)
+	if err != nil {
+		return karma.Format(err, "unable to add modified secret")
 	}
 
 	return nil
 }
 
 func openEditor(editor string, plaintext []byte) (*os.File, error) {
-	buffer, err := ioutil.TempFile(os.TempDir(), "carcosa")
+	buffer, err := ioutil.TempFile(os.TempDir(), "carcosa.secret.")
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"can't create temporary buffer file '%s'",
+			"unable to create temporary buffer file %q",
 			buffer.Name(),
 		)
 	}
@@ -275,7 +317,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"can't chmod 0600 temporary buffer file '%s'",
+			"unable to chmod 0600 temporary buffer file %q",
 			buffer.Name(),
 		)
 	}
@@ -284,7 +326,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"can't write data to temporary buffer file '%s'",
+			"unable to write data to temporary buffer file %q",
 			buffer.Name(),
 		)
 	}
@@ -293,7 +335,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"can't sync data to temporary buffer file '%s'",
+			"unable to sync data to temporary buffer file %q",
 			buffer.Name(),
 		)
 	}
@@ -315,7 +357,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"can't seek to the beginning of the file '%s'",
+			"unable to seek to the beginning of the file %q",
 			buffer.Name(),
 		)
 	}
@@ -324,13 +366,13 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 }
 
-func extractSecret(args map[string]interface{}) (*secret, error) {
+func extractSecret(opts Opts) (*secret, error) {
 	var (
-		token     = args["<token>"].(string)
-		ns        = args["-s"].(string)
-		repoPath  = args["-p"].(string)
-		syncFirst = args["-y"].(bool)
-		remote    = args["-r"].(string)
+		token     = opts.ArgToken
+		ns        = opts.ValueNamespace
+		repoPath  = opts.ValuePath
+		syncFirst = opts.FlagSyncFirst
+		remote    = opts.ValueRemote
 	)
 
 	repo, err := open(repoPath)
@@ -343,29 +385,22 @@ func extractSecret(args map[string]interface{}) (*secret, error) {
 		if err != nil {
 			return nil, karma.Format(
 				err,
-				"can't sync with remote",
+				"unable to sync with remote",
 			)
 		}
 	}
 
-	masterKey, err := readMasterKey(args)
+	masterKey, err := readMasterKey(opts)
 	if err != nil {
-		return nil, karma.Format(err, "can't read master key")
+		return nil, karma.Format(err, "unable to read master key")
 	}
 
 	secrets, err := getSecretsFromRepo(repo, ns, masterKey)
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"can't get secrets from repo '%s'", repoPath,
+			"unable to get secrets from repo %q", repoPath,
 		)
-	}
-
-	tokenHash := ""
-	hashDelimIndex := strings.LastIndex(token, tokenHashDelimiter)
-	if hashDelimIndex > 0 {
-		tokenHash = token[hashDelimIndex+2:]
-		token = token[:hashDelimIndex]
 	}
 
 	for _, secret := range secrets {
@@ -373,39 +408,26 @@ func extractSecret(args map[string]interface{}) (*secret, error) {
 			continue
 		}
 
-		if tokenHash != "" && !strings.HasPrefix(secret.hash, tokenHash) {
-			continue
-		}
-
 		return &secret, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf(
+		"no secret with token %q found",
+		token,
+	)
 }
 
-func getSecret(args map[string]interface{}) error {
-	var (
-		token    = args["<token>"].(string)
-		repoPath = args["-p"].(string)
-	)
-
-	secret, err := extractSecret(args)
+func getSecret(opts Opts) error {
+	secret, err := extractSecret(opts)
 	if err != nil {
 		return err
-	}
-
-	if secret == nil {
-		return fmt.Errorf(
-			"no secret with token '%s' found in the repo '%s'",
-			token, repoPath,
-		)
 	}
 
 	plaintext, err := ioutil.ReadAll(secret.stream)
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't obtain plaintext from secret",
+			"unable to obtain plaintext from secret",
 		)
 	}
 
@@ -414,26 +436,26 @@ func getSecret(args map[string]interface{}) error {
 	return nil
 }
 
-func listSecrets(args map[string]interface{}) error {
+func listSecrets(opts Opts) error {
 	var (
-		ns        = args["-s"].(string)
-		repoPath  = args["-p"].(string)
-		syncFirst = args["-y"].(bool)
+		ns        = opts.ValueNamespace
+		repoPath  = opts.ValuePath
+		syncFirst = opts.FlagSyncFirst
 	)
 
 	if syncFirst {
-		err := syncSecrets(args)
+		err := syncSecrets(opts)
 		if err != nil {
 			return karma.Format(
 				err,
-				"can't sync with remote",
+				"unable to sync with remote",
 			)
 		}
 	}
 
-	masterKey, err := readMasterKey(args)
+	masterKey, err := readMasterKey(opts)
 	if err != nil {
-		return karma.Format(err, "can't read master key")
+		return karma.Format(err, "unable to read master key")
 	}
 
 	repo, err := open(repoPath)
@@ -445,40 +467,36 @@ func listSecrets(args map[string]interface{}) error {
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't get secrets from repo '%s'", repoPath,
+			"unable to get secrets from repo %q", repoPath,
 		)
 	}
 
-	listed := map[string]struct{}{}
 	for _, secret := range secrets {
-		if _, ok := listed[secret.token]; ok {
-			fmt.Println(secret.token + tokenHashDelimiter + secret.hash[:7])
-		} else {
-			fmt.Println(secret.token)
-		}
-		listed[secret.token] = struct{}{}
+		log.Tracef("[hash] %s", secret.ref.hash)
+		log.Tracef("[ref]  %s", secret.ref.name)
+		fmt.Println(secret.token)
 	}
 
 	return nil
 }
 
-func removeSecret(args map[string]interface{}) error {
+func removeSecret(opts Opts) error {
 	var (
-		token    = args["<token>"].(string)
-		repoPath = args["-p"].(string)
-		ns       = args["-s"].(string)
-		remote   = args["-r"].(string)
-		doPush   = !args["-n"].(bool)
+		token    = opts.ArgToken
+		repoPath = opts.ValuePath
+		ns       = opts.ValueNamespace
+		remote   = opts.ValueRemote
+		doSync   = !opts.FlagNoSync
 	)
 
-	secret, err := extractSecret(args)
+	secret, err := extractSecret(opts)
 	if err != nil {
 		return err
 	}
 
 	if secret == nil {
 		return fmt.Errorf(
-			"no secret with token '%s' found in the repo '%s'",
+			"no secret with token %q found in the repo %q",
 			token, repoPath,
 		)
 	}
@@ -492,7 +510,7 @@ func removeSecret(args map[string]interface{}) error {
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't remove ref '%s'", secret.ref.name,
+			"unable to remove ref %q", secret.ref.name,
 		)
 	}
 
@@ -500,11 +518,11 @@ func removeSecret(args map[string]interface{}) error {
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't mark ref '%s' as deleted", secret.ref.name,
+			"unable to mark ref %q as deleted", secret.ref.name,
 		)
 	}
 
-	if doPush {
+	if doSync {
 		err := sync(repo, remote, ns)
 		if err != nil {
 			return err
@@ -514,12 +532,11 @@ func removeSecret(args map[string]interface{}) error {
 	return nil
 }
 
-func syncSecrets(args map[string]interface{}) error {
+func syncSecrets(opts Opts) error {
 	var (
-		ns       = args["-s"].(string)
-		repoPath = args["-p"].(string)
-		remote   = args["-r"].(string)
-		//doPush       = !args["-n"].(bool)
+		ns       = opts.ValueNamespace
+		repoPath = opts.ValuePath
+		remote   = opts.ValueRemote
 	)
 
 	repo, err := open(repoPath)
@@ -535,23 +552,23 @@ func syncSecrets(args map[string]interface{}) error {
 	return nil
 }
 
-func checkMasterPasswordCache(args map[string]interface{}) error {
-	args["-k"] = "/dev/null"
+func checkMasterPasswordCache(opts Opts) error {
+	opts.ValueMasterFile = "/dev/null"
 
-	_, err := readMasterKey(args)
+	_, err := readMasterKey(opts)
 	if err != nil {
-		return karma.Format(err, "can't read master key")
+		return karma.Format(err, "unable to read master key")
 	}
 
 	return nil
 }
 
-func readMasterKey(args map[string]interface{}) ([]byte, error) {
+func readMasterKey(opts Opts) ([]byte, error) {
 	var (
-		useCache             = args["-c"].(bool)
-		cacheFileName        = args["-f"].(string)
-		masterKeyFileName, _ = args["-k"].(string)
-		repoPath             = args["-p"].(string)
+		useCache          = opts.FlagUseMasterCache
+		cacheFileName     = opts.ValueMasterCachePath
+		masterKeyFileName = opts.ValueMasterFile
+		repoPath          = opts.ValuePath
 	)
 
 	if len(globalMasterKey) > 0 {
@@ -563,7 +580,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		if err != nil {
 			return nil, karma.Format(
 				err,
-				"can't retrieve master key from cache",
+				"unable to retrieve master key from cache",
 			)
 		}
 
@@ -577,7 +594,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 
 	if masterKeyFileName == "" {
 		if stat, err := os.Stdin.Stat(); err != nil {
-			return nil, karma.Format(err, "can't stat stdin")
+			return nil, karma.Format(err, "unable to stat stdin")
 		} else {
 			if (stat.Mode() & os.ModeCharDevice) == 0 {
 				return nil, karma.Format(
@@ -591,20 +608,20 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		fmt.Fprintln(os.Stderr)
 		if err != nil {
 			return nil, karma.Format(
-				err, "can't read master password from terminal",
+				err, "unable to read master password from terminal",
 			)
 		}
 	} else {
 		masterKey, err = ioutil.ReadFile(masterKeyFileName)
 		if err != nil {
 			return nil, karma.Format(
-				err, "can't read master password from file",
+				err, "unable to read master password from file",
 			)
 		}
 	}
 
 	if len(masterKey) < 1 {
-		return nil, fmt.Errorf("master key can't be empty")
+		return nil, fmt.Errorf("master key unable to be empty")
 	}
 
 	if useCache {
@@ -612,7 +629,7 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 		if err != nil {
 			return nil, karma.Format(
 				err,
-				"can't store master key cache",
+				"unable to store master key cache",
 			)
 		}
 	}
@@ -622,21 +639,12 @@ func readMasterKey(args map[string]interface{}) ([]byte, error) {
 	return masterKey, nil
 }
 
-func readPlainText() ([]byte, error) {
-	plaintext, err := ioutil.ReadAll(os.Stdin)
-	if err != nil {
-		return nil, karma.Format(err, "can't read secret body")
-	}
-
-	return plaintext, nil
-}
-
 func getSecretsFromRepo(
 	repo *repo, ns string, masterKey []byte,
 ) ([]secret, error) {
 	refs, err := repo.list(ns)
 	if err != nil {
-		return nil, karma.Format(err, "can't get tokens")
+		return nil, karma.Format(err, "unable to get tokens")
 	}
 
 	//sort.Sort(refs)
@@ -649,11 +657,12 @@ func getSecretsFromRepo(
 		}
 
 		hexToken := strings.TrimPrefix(ref.name, ns)
-		blobBody, err := repo.cat(ref.hash)
+		ciphertext, err := repo.cat(ref.hash)
 		if err != nil {
 			return nil, karma.Format(
 				err,
-				"can't get ciphertext from",
+				"unable to get ciphertext from %q",
+				ref.name,
 			)
 		}
 
@@ -661,16 +670,16 @@ func getSecretsFromRepo(
 		if err != nil {
 			return nil, karma.Format(
 				err,
-				"can't decode hex token '%s'", hexToken,
+				"unable to decode hex token %q", hexToken,
 			)
 		}
 
-		secret, err := decryptBlob(encryptedToken, blobBody, masterKey)
+		secret, err := decryptBlob(encryptedToken, ciphertext, masterKey)
 		if err != nil {
 			if err != errInvalidHMAC {
 				return nil, karma.Format(
 					err,
-					"can't decrypt blob for token '%s'", hexToken,
+					"unable to decrypt blob for token %q", hexToken,
 				)
 			}
 		} else {
@@ -689,7 +698,7 @@ func storeMasterKeyCache(
 ) error {
 	machineKey, err := getUniqueMachineID()
 	if err != nil {
-		return karma.Format(err, "can't obtain machine key")
+		return karma.Format(err, "unable to obtain machine key")
 	}
 
 	encryptedToken, ciphertext, err := encryptBlob(
@@ -707,7 +716,7 @@ func storeMasterKeyCache(
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't create dir for '%s'", targetCacheName,
+			"unable to create dir for %q", targetCacheName,
 		)
 	}
 
@@ -717,7 +726,7 @@ func storeMasterKeyCache(
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't create cache file '%s' for master key",
+			"unable to create cache file %q for master key",
 			targetCacheName,
 		)
 	}
@@ -726,7 +735,7 @@ func storeMasterKeyCache(
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't write encrypted master key to '%s'",
+			"unable to write encrypted master key to %q",
 			targetCacheName,
 		)
 	}
@@ -735,7 +744,7 @@ func storeMasterKeyCache(
 	if err != nil {
 		return karma.Format(
 			err,
-			"can't close cache file '%s'", targetCacheName,
+			"unable to close cache file %q", targetCacheName,
 		)
 	}
 
@@ -745,7 +754,7 @@ func storeMasterKeyCache(
 func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error) {
 	machineKey, err := getUniqueMachineID()
 	if err != nil {
-		return nil, karma.Format(err, "can't obtain machine key")
+		return nil, karma.Format(err, "unable to obtain machine key")
 	}
 
 	repoHash := getHash(repoPath)
@@ -755,7 +764,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 	if err != nil {
 		return nil, karma.Format(
 			err,
-			"can't glob for '%s.%s.*'", cacheFileName, repoHash,
+			"unable to glob for '%s.%s.*'", cacheFileName, repoHash,
 		)
 	}
 
@@ -769,7 +778,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 		if err != nil {
 			return nil, karma.Format(
 				err,
-				"can't read encrypted master key from '%s'",
+				"unable to read encrypted master key from %q",
 				candidate,
 			)
 		}
@@ -778,7 +787,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 		if err != nil {
 			return nil, karma.Format(
 				err,
-				"can't decode hex token '%s'", hexToken,
+				"unable to decode hex token %q", hexToken,
 			)
 		}
 
@@ -787,7 +796,7 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 			if err != errInvalidHMAC {
 				return nil, karma.Format(
 					err,
-					"can't decrypt master key from '%s'",
+					"unable to decrypt master key from %q",
 					candidate,
 				)
 			}
@@ -799,14 +808,14 @@ func getMasterKeyFromCache(cacheFileName string, repoPath string) ([]byte, error
 		if err != nil {
 			return nil, karma.Format(
 				err,
-				"can't decrypt master key stream from '%s'",
+				"unable to decrypt master key stream from %q",
 				candidate,
 			)
 		}
 
 		if len(masterKey) < 1 {
 			return nil, fmt.Errorf(
-				"empty key specified in '%s'",
+				"empty key specified in %q",
 				candidate,
 			)
 		}

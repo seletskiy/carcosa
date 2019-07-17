@@ -1,34 +1,9 @@
 package main
 
-import (
-	"strings"
-
-	"github.com/reconquest/karma-go"
-)
-
 func sync(repo *repo, remote string, ns string) error {
-	//if !repo.isGitRepo() {
-	//    if remote == "origin" {
-	//        return fmt.Errorf(
-	//            "directory is not a git repo and remote is not specified",
-	//        )
-	//    }
-
-	//    err := repo.clone(remote)
-	//    if err != nil {
-	//        return karma.Format(
-	//            err,
-	//            "can't clone git repo '%s'", remote,
-	//        )
-	//    }
-	//}
-
-	err := repo.fetch(remote, refspec(ns))
+	err := repo.pull(remote, refspec(ns))
 	if err != nil {
-		return karma.Format(
-			err,
-			"can't pull remote '%s'", remote,
-		)
+		return err
 	}
 
 	refs, err := repo.list(ns)
@@ -49,7 +24,7 @@ func sync(repo *repo, remote string, ns string) error {
 			adds[ref.token().name] = ref
 		case ref.is(deletion):
 			dels[ref.token().name] = ref
-		case ref.is(theirs):
+		case ref.is(external):
 			thys[ref.token().name] = ref
 		default:
 			ours[ref.token().name] = ref
@@ -62,7 +37,7 @@ func sync(repo *repo, remote string, ns string) error {
 			return err
 		}
 
-		thys[token] = ref.as(theirs)
+		thys[token] = ref.as(external)
 
 		err = repo.update(thys[token])
 		if err != nil {
@@ -84,21 +59,12 @@ func sync(repo *repo, remote string, ns string) error {
 				}
 
 				delete(thys, token)
-
-				ref.hash = strings.Repeat("0", 40)
-				err = repo.update(ref)
-				if err != nil {
-					return err
-				}
 			}
 		}
 
 		err = repo.push(remote, refspec(ns))
 		if err != nil {
-			return karma.Format(
-				err,
-				"can't push to remote '%s'", remote,
-			)
+			return err
 		}
 	}
 
