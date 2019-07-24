@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -470,6 +471,10 @@ func listSecrets(opts Opts) error {
 			"unable to get secrets from repo %q", repoPath,
 		)
 	}
+
+	sort.Slice(secrets, func(i, j int) bool {
+		return secrets[i].token < secrets[j].token
+	})
 
 	for _, secret := range secrets {
 		log.Tracef("[hash] %s", secret.ref.hash)
