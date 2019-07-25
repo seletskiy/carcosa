@@ -3,6 +3,7 @@ module github.com/seletskiy/carcosa
 go 1.12
 
 require (
+	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
 	github.com/kevinburke/ssh_config v0.0.0-20190630040420-2e50c441276c // indirect
 	github.com/kovetskiy/lorg v0.0.0-20190701130800-9c6042b7edb0
@@ -14,6 +15,7 @@ require (
 	golang.org/x/text v0.3.2 // indirect
 	gopkg.in/src-d/go-billy.v4 v4.3.1 // indirect
 	gopkg.in/src-d/go-git.v4 v4.12.0
+	gopkg.in/yaml.v2 v2.2.2 // indirect
 )
 
-replace gopkg.in/src-d/go-git.v4 => github.com/seletskiy/go-git v0.0.0-20190716115729-115fc3864bd1
+replace gopkg.in/src-d/go-git.v4 => github.com/seletskiy/go-git v0.0.0-20190725141636-bcd37d96617c
