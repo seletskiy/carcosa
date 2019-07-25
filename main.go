@@ -652,8 +652,6 @@ func getSecretsFromRepo(
 		return nil, karma.Format(err, "unable to get tokens")
 	}
 
-	//sort.Sort(refs)
-
 	secrets := []secret{}
 
 	for _, ref := range refs {

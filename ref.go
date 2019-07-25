@@ -50,27 +50,3 @@ func (ns refspec) from() string {
 }
 
 type refs []ref
-
-func (refs refs) Len() int {
-	return len(refs)
-}
-
-func (refs refs) Swap(i, j int) {
-	refs[i], refs[j] = refs[j], refs[i]
-}
-
-func (refs refs) Less(i, j int) bool {
-	if refs[i].stat == nil {
-		panic(
-			fmt.Sprintf("ref %s stat is nil", refs[i].hash),
-		)
-	}
-
-	if refs[j].stat == nil {
-		panic(
-			fmt.Sprintf("ref %s stat is nil", refs[j].hash),
-		)
-	}
-
-	return refs[i].stat.ModTime().Unix() < refs[j].stat.ModTime().Unix()
-}
