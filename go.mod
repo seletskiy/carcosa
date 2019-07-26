@@ -18,4 +18,4 @@ require (
 	gopkg.in/yaml.v2 v2.2.2 // indirect
 )
 
-replace gopkg.in/src-d/go-git.v4 => github.com/seletskiy/go-git v0.0.0-20190725141636-bcd37d96617c
+replace gopkg.in/src-d/go-git.v4 => github.com/src-d/go-git v0.0.0-20190726165937-1edb992dbc41
