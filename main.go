@@ -273,6 +273,8 @@ func addSecret(opts opts, auths auths) error {
 		return karma.Format(err, "unable to mark ref %q as added", ref.name)
 	}
 
+	log.Infof("{add} secret: %s", token)
+
 	if doSync {
 		err := sync(repo, remote, ns, auths)
 		if err != nil {
@@ -543,6 +545,8 @@ func removeSecret(opts opts, auths auths) error {
 			"unable to mark ref %q as deleted", secret.ref.name,
 		)
 	}
+
+	log.Infof("{del} secret: %s", token)
 
 	if doSync {
 		err := sync(repo, remote, ns, auths)

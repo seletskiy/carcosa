@@ -1,6 +1,20 @@
 package main
 
-func sync(repo *repo, remote string, ns string, auths auths) error {
+func sync(
+	repo *repo,
+	remote string,
+	ns string,
+	auths auths,
+) error {
+	var stat struct {
+		ours, thys struct {
+			add int
+			del int
+		}
+	}
+
+	log.Infof("{sync} with: %s", remote)
+
 	err := repo.pull(remote, refspec(ns), auths)
 	if err != nil {
 		return err
@@ -43,6 +57,8 @@ func sync(repo *repo, remote string, ns string, auths auths) error {
 		if err != nil {
 			return err
 		}
+
+		stat.thys.add++
 	}
 
 	if len(thys) != 0 {
@@ -59,6 +75,8 @@ func sync(repo *repo, remote string, ns string, auths auths) error {
 				}
 
 				delete(thys, token)
+
+				stat.thys.del++
 			}
 		}
 
@@ -74,6 +92,8 @@ func sync(repo *repo, remote string, ns string, auths auths) error {
 			if err != nil {
 				return err
 			}
+
+			stat.ours.del++
 		}
 	}
 
@@ -83,6 +103,8 @@ func sync(repo *repo, remote string, ns string, auths auths) error {
 			if err != nil {
 				return err
 			}
+
+			stat.ours.add++
 		}
 
 		err = repo.delete(ref)
@@ -90,6 +112,14 @@ func sync(repo *repo, remote string, ns string, auths auths) error {
 			return err
 		}
 	}
+
+	log.Infof(
+		"{sync} done: sent +%d -%d | recv +%d -%d",
+		stat.thys.add,
+		stat.thys.del,
+		stat.ours.add,
+		stat.ours.del,
+	)
 
 	return nil
 }

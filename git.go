@@ -148,7 +148,11 @@ func (repo *repo) auth(name string, auths auths) (git_transport.AuthMethod, erro
 		return nil, err
 	}
 
-	auth, err := auths.get(remote.Config().URLs[0])
+	url := remote.Config().URLs[0]
+
+	log.Debugf("{auth} remote %q | url %q", name, url)
+
+	auth, err := auths.get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +179,7 @@ func (repo *repo) pull(name string, spec refspec, auths auths) error {
 	case git.NoErrAlreadyUpToDate:
 		return nil
 	case git_transport.ErrEmptyRemoteRepository:
-		log.Infof("remote repository is empty")
+		log.Infof("{pull} remote repository is empty")
 		return nil
 	default:
 		return karma.Format(
@@ -204,7 +208,7 @@ func (repo *repo) push(name string, spec refspec, auths auths) error {
 	case nil:
 		return nil
 	case git.NoErrAlreadyUpToDate:
-		log.Infof("remote repository is up-to-date")
+		log.Infof("{push} remote repository is up-to-date")
 		return nil
 	default:
 		return karma.Format(
