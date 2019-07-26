@@ -59,12 +59,12 @@ Remote sync is controlled via '-n' and '-y' flags, see more in usage.
 
 Usage:
     carcosa [options] [-v]... -h | --help | --version
-    carcosa [options] [-v]... -S [-c] [-n] [-r <remote>]
-    carcosa [options] [-v]... -A [-c] [-n] <token>
-    carcosa [options] [-v]... -M [-c] [-n] <token>
-    carcosa [options] [-v]... -G [-c] [-y] <token>
-    carcosa [options] [-v]... -L [-c] [-y]
-    carcosa [options] [-v]... -R [-c] [-n] <token>
+    carcosa [options] [-v]... -S [-a=]... [-c] [-n] [-r <remote>]
+    carcosa [options] [-v]... -A [-a=]... [-c] [-n] <token>
+    carcosa [options] [-v]... -M [-a=]... [-c] [-n] <token>
+    carcosa [options] [-v]... -G [-a=]... [-c] [-y] <token>
+    carcosa [options] [-v]... -L [-a=]... [-c] [-y]
+    carcosa [options] [-v]... -R [-a=]... [-c] [-n] <token>
     carcosa [options] [-v]... -F -c
 
 Options:
@@ -100,28 +100,34 @@ Options:
                     unsecure; use of fifo pipe as a file is preferable.
     -e <editor>    Use specified editor for modifying secret in place.
                     [default: $EDITOR]
+    -a <auth>...   Specify authentication parameters for various remote
+                    protocols.
+                    Supported protocols:
+                     * SSH: ssh:<private-key-path>
+                    [default: ssh:$AUTH_SSH_KEY_PATH]
     -v             Verbose output.
 `
 
-type Opts struct {
-	ArgToken             string `docopt:"<token>"`
-	ModeSync             bool   `docopt:"--sync"`
-	ModeAdd              bool   `docopt:"--add"`
-	ModeModify           bool   `docopt:"--modify"`
-	ModeGet              bool   `docopt:"--get"`
-	ModeList             bool   `docopt:"--list"`
-	ModeRemove           bool   `docopt:"--remove"`
-	ModeKeycheck         bool   `docopt:"--keycheck"`
-	ValueNamespace       string `docopt:"-s"`
-	ValuePath            string `docopt:"-p"`
-	ValueRemote          string `docopt:"-r"`
-	ValueMasterCachePath string `docopt:"-f"`
-	ValueMasterFile      string `docopt:"-k"`
-	ValueEditor          string `docopt:"-e"`
-	FlagNoSync           bool   `docopt:"-n"`
-	FlagSyncFirst        bool   `docopt:"-y"`
-	FlagUseMasterCache   bool   `docopt:"-c"`
-	FlagVerbose          int    `docopt:"-v"`
+type opts struct {
+	ArgToken             string   `docopt:"<token>"`
+	ModeSync             bool     `docopt:"--sync"`
+	ModeAdd              bool     `docopt:"--add"`
+	ModeModify           bool     `docopt:"--modify"`
+	ModeGet              bool     `docopt:"--get"`
+	ModeList             bool     `docopt:"--list"`
+	ModeRemove           bool     `docopt:"--remove"`
+	ModeKeycheck         bool     `docopt:"--keycheck"`
+	ValueNamespace       string   `docopt:"-s"`
+	ValuePath            string   `docopt:"-p"`
+	ValueRemote          string   `docopt:"-r"`
+	ValueMasterCachePath string   `docopt:"-f"`
+	ValueMasterFile      string   `docopt:"-k"`
+	ValueEditor          string   `docopt:"-e"`
+	ValueAuths           []string `docopt:"-a"`
+	FlagNoSync           bool     `docopt:"-n"`
+	FlagSyncFirst        bool     `docopt:"-y"`
+	FlagUseMasterCache   bool     `docopt:"-c"`
+	FlagVerbose          int      `docopt:"-v"`
 }
 
 func init() {
@@ -139,6 +145,8 @@ func init() {
 		/* -> */ filepath.Join(home, ".secrets"),
 		"$CACHE_PATH",
 		/* -> */ filepath.Join(home, ".config", "carcosa", "master"),
+		"$AUTH_SSH_KEY_PATH",
+		/* -> */ filepath.Join(home, ".ssh", "id_rsa"),
 	).Replace(usage)
 }
 
@@ -148,7 +156,7 @@ func main() {
 		panic(err)
 	}
 
-	var opts Opts
+	var opts opts
 
 	err = args.Bind(&opts)
 	if err != nil {
@@ -164,19 +172,28 @@ func main() {
 		log.SetLevel(lorg.LevelTrace)
 	}
 
+	auths := auths{}
+
+	for _, definition := range opts.ValueAuths {
+		err := auths.add(definition)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	switch {
 	case opts.ModeSync:
-		err = syncSecrets(opts)
+		err = syncSecrets(opts, auths)
 	case opts.ModeAdd:
-		err = addSecret(opts)
+		err = addSecret(opts, auths)
 	case opts.ModeGet:
-		err = getSecret(opts)
+		err = getSecret(opts, auths)
 	case opts.ModeList:
-		err = listSecrets(opts)
+		err = listSecrets(opts, auths)
 	case opts.ModeModify:
-		err = modifySecret(opts)
+		err = modifySecret(opts, auths)
 	case opts.ModeRemove:
-		err = removeSecret(opts)
+		err = removeSecret(opts, auths)
 	case opts.ModeKeycheck:
 		err = checkMasterPasswordCache(opts)
 	}
@@ -186,7 +203,7 @@ func main() {
 	}
 }
 
-func addSecret(opts Opts) error {
+func addSecret(opts opts, auths auths) error {
 	var (
 		token    = opts.ArgToken
 		ns       = opts.ValueNamespace
@@ -257,7 +274,7 @@ func addSecret(opts Opts) error {
 	}
 
 	if doSync {
-		err := sync(repo, remote, ns)
+		err := sync(repo, remote, ns, auths)
 		if err != nil {
 			return karma.Format(err, "unable to sync with remote")
 		}
@@ -266,13 +283,13 @@ func addSecret(opts Opts) error {
 	return nil
 }
 
-func modifySecret(opts Opts) error {
+func modifySecret(opts opts, auths auths) error {
 	var (
 		editor = opts.ValueEditor
 		noSync = opts.FlagNoSync
 	)
 
-	secret, err := extractSecret(opts)
+	secret, err := extractSecret(opts, auths)
 	if err != nil {
 		return err
 	}
@@ -290,13 +307,13 @@ func modifySecret(opts Opts) error {
 	defer func() { os.Remove(os.Stdin.Name()) }()
 
 	opts.FlagNoSync = true
-	err = removeSecret(opts)
+	err = removeSecret(opts, auths)
 	if err != nil {
 		return karma.Format(err, "unable to remove old secret")
 	}
 
 	opts.FlagNoSync = noSync
-	err = addSecret(opts)
+	err = addSecret(opts, auths)
 	if err != nil {
 		return karma.Format(err, "unable to add modified secret")
 	}
@@ -367,7 +384,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 }
 
-func extractSecret(opts Opts) (*secret, error) {
+func extractSecret(opts opts, auths auths) (*secret, error) {
 	var (
 		token     = opts.ArgToken
 		ns        = opts.ValueNamespace
@@ -382,7 +399,7 @@ func extractSecret(opts Opts) (*secret, error) {
 	}
 
 	if syncFirst {
-		err := sync(repo, remote, ns)
+		err := sync(repo, remote, ns, auths)
 		if err != nil {
 			return nil, karma.Format(
 				err,
@@ -418,8 +435,8 @@ func extractSecret(opts Opts) (*secret, error) {
 	)
 }
 
-func getSecret(opts Opts) error {
-	secret, err := extractSecret(opts)
+func getSecret(opts opts, auths auths) error {
+	secret, err := extractSecret(opts, auths)
 	if err != nil {
 		return err
 	}
@@ -437,7 +454,7 @@ func getSecret(opts Opts) error {
 	return nil
 }
 
-func listSecrets(opts Opts) error {
+func listSecrets(opts opts, auths auths) error {
 	var (
 		ns        = opts.ValueNamespace
 		repoPath  = opts.ValuePath
@@ -445,7 +462,7 @@ func listSecrets(opts Opts) error {
 	)
 
 	if syncFirst {
-		err := syncSecrets(opts)
+		err := syncSecrets(opts, auths)
 		if err != nil {
 			return karma.Format(
 				err,
@@ -485,7 +502,7 @@ func listSecrets(opts Opts) error {
 	return nil
 }
 
-func removeSecret(opts Opts) error {
+func removeSecret(opts opts, auths auths) error {
 	var (
 		token    = opts.ArgToken
 		repoPath = opts.ValuePath
@@ -494,7 +511,7 @@ func removeSecret(opts Opts) error {
 		doSync   = !opts.FlagNoSync
 	)
 
-	secret, err := extractSecret(opts)
+	secret, err := extractSecret(opts, auths)
 	if err != nil {
 		return err
 	}
@@ -528,7 +545,7 @@ func removeSecret(opts Opts) error {
 	}
 
 	if doSync {
-		err := sync(repo, remote, ns)
+		err := sync(repo, remote, ns, auths)
 		if err != nil {
 			return err
 		}
@@ -537,7 +554,7 @@ func removeSecret(opts Opts) error {
 	return nil
 }
 
-func syncSecrets(opts Opts) error {
+func syncSecrets(opts opts, auths auths) error {
 	var (
 		ns       = opts.ValueNamespace
 		repoPath = opts.ValuePath
@@ -546,10 +563,15 @@ func syncSecrets(opts Opts) error {
 
 	repo, err := open(repoPath)
 	if err != nil {
-		return err
+		if karma.Contains(err, ErrNoRepo) {
+			repo, err = clone(remote, repoPath, auths)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
-	err = sync(repo, remote, ns)
+	err = sync(repo, remote, ns, auths)
 	if err != nil {
 		return err
 	}
@@ -557,7 +579,7 @@ func syncSecrets(opts Opts) error {
 	return nil
 }
 
-func checkMasterPasswordCache(opts Opts) error {
+func checkMasterPasswordCache(opts opts) error {
 	opts.ValueMasterFile = "/dev/null"
 
 	_, err := readMasterKey(opts)
@@ -568,7 +590,7 @@ func checkMasterPasswordCache(opts Opts) error {
 	return nil
 }
 
-func readMasterKey(opts Opts) ([]byte, error) {
+func readMasterKey(opts opts) ([]byte, error) {
 	var (
 		useCache          = opts.FlagUseMasterCache
 		cacheFileName     = opts.ValueMasterCachePath

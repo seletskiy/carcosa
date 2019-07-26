@@ -5,18 +5,42 @@ import (
 	"strings"
 
 	"github.com/reconquest/karma-go"
-	"golang.org/x/crypto/ssh"
 
 	git "gopkg.in/src-d/go-git.v4"
 	git_config "gopkg.in/src-d/go-git.v4/config"
 	git_plumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	git_transport "gopkg.in/src-d/go-git.v4/plumbing/transport"
-	git_ssh "gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
+
+var ErrNoRepo = git.ErrRepositoryNotExists
 
 type repo struct {
 	path string
 	git  *git.Repository
+}
+
+func clone(url string, path string, auths auths) (*repo, error) {
+	auth, err := auths.get(path)
+	if err != nil {
+		return nil, err
+	}
+
+	git, err := git.PlainClone(path, false, &git.CloneOptions{
+		NoCheckout: true,
+		Auth:       auth,
+		URL:        url,
+	})
+	if err != nil {
+		return nil, karma.Format(
+			err,
+			"unable to clone git repository %q to %q", url, path,
+		)
+	}
+
+	return &repo{
+		path: path,
+		git:  git,
+	}, nil
 }
 
 func open(path string) (*repo, error) {
@@ -118,49 +142,31 @@ func (repo *repo) list(ns string) (refs, error) {
 	)
 }
 
-//func (repo *repo) clone(remote string) error {
-//    cmd := repo.cmd("clone", "--depth=1", "--bare", "-n", remote, repo.path)
-
-//    cmd.Stdout = os.Stdout
-//    cmd.Stderr = os.Stderr
-
-//    err := cmd.Run()
-//    if err != nil {
-//        return karma.Format(
-//            err,
-//            "can't run repo clone '%s' -> '%s'", remote, repo.path,
-//        )
-//    }
-
-//    return nil
-//}
-
-func (repo *repo) auth() git_transport.AuthMethod {
-	var auth git_transport.AuthMethod
-
-	path := "/home/operator/.ssh/id_rsa"
-	sshKey, err := ioutil.ReadFile(path)
+func (repo *repo) auth(name string, auths auths) (git_transport.AuthMethod, error) {
+	remote, err := repo.git.Remote(name)
 	if err != nil {
-		panic(err)
-	}
-	signer, err := ssh.ParsePrivateKey([]byte(sshKey))
-	if err != nil {
-		panic(err)
-	}
-	auth = &git_ssh.PublicKeys{
-		User:   "git",
-		Signer: signer,
+		return nil, err
 	}
 
-	return auth
+	auth, err := auths.get(remote.Config().URLs[0])
+	if err != nil {
+		return nil, err
+	}
+
+	return auth, nil
 }
 
-func (repo *repo) pull(remote string, spec refspec) error {
-	log.Debugf("{pull} %s %s", remote, spec.to())
+func (repo *repo) pull(name string, spec refspec, auths auths) error {
+	log.Debugf("{pull} %s %s", name, spec.to())
 
-	err := repo.git.Fetch(&git.FetchOptions{
-		Auth:       repo.auth(),
-		RemoteName: remote,
+	auth, err := repo.auth(name, auths)
+	if err != nil {
+		return err
+	}
+
+	err = repo.git.Fetch(&git.FetchOptions{
+		Auth:       auth,
+		RemoteName: name,
 		RefSpecs:   []git_config.RefSpec{git_config.RefSpec(spec.to())},
 	})
 	switch err {
@@ -175,23 +181,22 @@ func (repo *repo) pull(remote string, spec refspec) error {
 		return karma.Format(
 			err,
 			"unable to fetch remote %q",
-			remote,
+			name,
 		)
 	}
 }
 
-func (repo *repo) push(remote string, spec refspec) error {
-	log.Debugf("{push} %s %s", remote, spec.from())
+func (repo *repo) push(name string, spec refspec, auths auths) error {
+	log.Debugf("{push} %s %s", name, spec.from())
 
-	rem, err := repo.git.Remote(remote)
+	auth, err := repo.auth(name, auths)
 	if err != nil {
 		return err
 	}
 
-	rem.Config().Fetch = []git_config.RefSpec{git_config.RefSpec(spec.to())}
-	err = rem.Push(&git.PushOptions{
-		Auth:       repo.auth(),
-		RemoteName: remote,
+	err = repo.git.Push(&git.PushOptions{
+		Auth:       auth,
+		RemoteName: name,
 		RefSpecs:   []git_config.RefSpec{git_config.RefSpec(spec.from())},
 		Prune:      true,
 	})
@@ -205,7 +210,7 @@ func (repo *repo) push(remote string, spec refspec) error {
 		return karma.Format(
 			err,
 			"unable to push to remote %q",
-			remote,
+			name,
 		)
 	}
 }

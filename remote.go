@@ -1,7 +1,7 @@
 package main
 
-func sync(repo *repo, remote string, ns string) error {
-	err := repo.pull(remote, refspec(ns))
+func sync(repo *repo, remote string, ns string, auths auths) error {
+	err := repo.pull(remote, refspec(ns), auths)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func sync(repo *repo, remote string, ns string) error {
 			}
 		}
 
-		err = repo.push(remote, refspec(ns))
+		err = repo.push(remote, refspec(ns), auths)
 		if err != nil {
 			return err
 		}
