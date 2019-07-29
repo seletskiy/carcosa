@@ -75,7 +75,11 @@ func (auths auths) get(path string) (git_transport.AuthMethod, error) {
 
 	switch auth := auth.(type) {
 	case *git_ssh.PublicKeys:
-		auth.User = endpoint.User
+		if endpoint.User != "" {
+			auth.User = endpoint.User
+		} else {
+			auth.User = "git"
+		}
 	}
 
 	return auth, nil
