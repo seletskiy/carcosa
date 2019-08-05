@@ -46,11 +46,6 @@ func sync(
 	}
 
 	for token, ref := range adds {
-		err := repo.delete(ref)
-		if err != nil {
-			return err
-		}
-
 		thys[token] = ref.as(external)
 
 		err = repo.update(thys[token])
@@ -62,12 +57,7 @@ func sync(
 	}
 
 	if len(thys) != 0 {
-		for token, ref := range dels {
-			err := repo.delete(ref)
-			if err != nil {
-				return err
-			}
-
+		for token, _ := range dels {
 			if ref, ok := thys[token]; ok {
 				err := repo.delete(ref)
 				if err != nil {
@@ -81,6 +71,20 @@ func sync(
 		}
 
 		err = repo.push(remote, refspec(ns), auths)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, ref := range dels {
+		err := repo.delete(ref)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, ref := range adds {
+		err := repo.delete(ref)
 		if err != nil {
 			return err
 		}
