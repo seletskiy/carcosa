@@ -1,4 +1,4 @@
-package main
+package carcosa
 
 import (
 	"bytes"
@@ -108,7 +108,7 @@ Options:
     -v             Verbose output.
 `
 
-type opts struct {
+type Opts struct {
 	ArgToken             string   `docopt:"<token>"`
 	ModeSync             bool     `docopt:"--sync"`
 	ModeAdd              bool     `docopt:"--add"`
@@ -150,19 +150,26 @@ func init() {
 	).Replace(usage)
 }
 
-func main() {
+func RunCli() {
 	args, err := docopt.ParseArgs(usage, nil, "2")
 	if err != nil {
 		panic(err)
 	}
 
-	var opts opts
+	var opts Opts
 
 	err = args.Bind(&opts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	err = Run(opts)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func Run(opts Opts) error {
 	switch opts.FlagVerbose {
 	case 0:
 		log.SetLevel(lorg.LevelInfo)
@@ -181,6 +188,7 @@ func main() {
 		}
 	}
 
+	var err error
 	switch {
 	case opts.ModeSync:
 		err = syncSecrets(opts, auths)
@@ -198,12 +206,10 @@ func main() {
 		err = checkMasterPasswordCache(opts)
 	}
 
-	if err != nil {
-		log.Fatal(err)
-	}
+	return err
 }
 
-func addSecret(opts opts, auths auths) error {
+func addSecret(opts Opts, auths auths) error {
 	var (
 		token    = opts.ArgToken
 		ns       = opts.ValueNamespace
@@ -285,7 +291,7 @@ func addSecret(opts opts, auths auths) error {
 	return nil
 }
 
-func modifySecret(opts opts, auths auths) error {
+func modifySecret(opts Opts, auths auths) error {
 	var (
 		editor = opts.ValueEditor
 		noSync = opts.FlagNoSync
@@ -386,7 +392,7 @@ func openEditor(editor string, plaintext []byte) (*os.File, error) {
 
 }
 
-func extractSecret(opts opts, auths auths) (*secret, error) {
+func extractSecret(opts Opts, auths auths) (*secret, error) {
 	var (
 		token     = opts.ArgToken
 		ns        = opts.ValueNamespace
@@ -437,7 +443,7 @@ func extractSecret(opts opts, auths auths) (*secret, error) {
 	)
 }
 
-func getSecret(opts opts, auths auths) error {
+func getSecret(opts Opts, auths auths) error {
 	secret, err := extractSecret(opts, auths)
 	if err != nil {
 		return err
@@ -456,7 +462,7 @@ func getSecret(opts opts, auths auths) error {
 	return nil
 }
 
-func listSecrets(opts opts, auths auths) error {
+func listSecrets(opts Opts, auths auths) error {
 	var (
 		ns        = opts.ValueNamespace
 		repoPath  = opts.ValuePath
@@ -504,7 +510,7 @@ func listSecrets(opts opts, auths auths) error {
 	return nil
 }
 
-func removeSecret(opts opts, auths auths) error {
+func removeSecret(opts Opts, auths auths) error {
 	var (
 		token    = opts.ArgToken
 		repoPath = opts.ValuePath
@@ -558,7 +564,7 @@ func removeSecret(opts opts, auths auths) error {
 	return nil
 }
 
-func syncSecrets(opts opts, auths auths) error {
+func syncSecrets(opts Opts, auths auths) error {
 	var (
 		ns       = opts.ValueNamespace
 		repoPath = opts.ValuePath
@@ -583,7 +589,7 @@ func syncSecrets(opts opts, auths auths) error {
 	return nil
 }
 
-func checkMasterPasswordCache(opts opts) error {
+func checkMasterPasswordCache(opts Opts) error {
 	opts.ValueMasterFile = "/dev/null"
 
 	_, err := readMasterKey(opts)
@@ -594,7 +600,7 @@ func checkMasterPasswordCache(opts opts) error {
 	return nil
 }
 
-func readMasterKey(opts opts) ([]byte, error) {
+func readMasterKey(opts Opts) ([]byte, error) {
 	var (
 		useCache          = opts.FlagUseMasterCache
 		cacheFileName     = opts.ValueMasterCachePath

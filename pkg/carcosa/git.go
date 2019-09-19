@@ -1,4 +1,4 @@
-package main
+package carcosa
 
 import (
 	"io/ioutil"
