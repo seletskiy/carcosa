@@ -158,6 +158,15 @@ func RunCli() {
 
 	var opts Opts
 
+	switch opts.FlagVerbose {
+	case 0:
+		log.SetLevel(lorg.LevelInfo)
+	case 1:
+		log.SetLevel(lorg.LevelDebug)
+	default:
+		log.SetLevel(lorg.LevelTrace)
+	}
+
 	err = args.Bind(&opts)
 	if err != nil {
 		log.Fatal(err)
@@ -170,15 +179,6 @@ func RunCli() {
 }
 
 func Run(opts Opts) error {
-	switch opts.FlagVerbose {
-	case 0:
-		log.SetLevel(lorg.LevelInfo)
-	case 1:
-		log.SetLevel(lorg.LevelDebug)
-	default:
-		log.SetLevel(lorg.LevelTrace)
-	}
-
 	auths := auths{}
 
 	for _, definition := range opts.ValueAuths {

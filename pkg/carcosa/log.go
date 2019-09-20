@@ -28,3 +28,7 @@ func init() {
 		),
 	))
 }
+
+func GetLogger() *lorg.Log {
+	return log
+}
