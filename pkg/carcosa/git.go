@@ -20,10 +20,12 @@ type repo struct {
 }
 
 func clone(url string, path string, auths auths) (*repo, error) {
-	auth, err := auths.get(path)
+	auth, err := auths.get(url)
 	if err != nil {
 		return nil, err
 	}
+
+	log.Infof("{clone} %s -> %s", url, path)
 
 	git, err := git.PlainClone(path, false, &git.CloneOptions{
 		NoCheckout: true,

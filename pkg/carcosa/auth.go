@@ -67,11 +67,7 @@ func (auths auths) get(path string) (git_transport.AuthMethod, error) {
 
 	auth := auths[endpoint.Protocol]
 	if auth == nil {
-		return nil, karma.Format(
-			err,
-			"no auth method known for protocol %q",
-			endpoint.Protocol,
-		)
+		return nil, nil
 	}
 
 	switch auth := auth.(type) {

@@ -576,14 +576,30 @@ func syncSecrets(opts Opts, auths auths) error {
 		if karma.Contains(err, ErrNoRepo) {
 			repo, err = clone(remote, repoPath, auths)
 			if err != nil {
-				return err
+				return karma.Format(
+					err,
+					"unable to clone",
+				)
 			}
+
+			err := repo.pull("origin", refspec(ns), auths)
+			if err != nil {
+				return karma.Format(
+					err,
+					"unable to pull",
+				)
+			}
+
+			return nil
 		}
 	}
 
 	err = sync(repo, remote, ns, auths)
 	if err != nil {
-		return err
+		return karma.Format(
+			err,
+			"unable to sync",
+		)
 	}
 
 	return nil
