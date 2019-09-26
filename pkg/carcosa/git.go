@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/reconquest/karma-go"
+	"github.com/seletskiy/carcosa/pkg/carcosa/auth"
 
 	git "gopkg.in/src-d/go-git.v4"
 	git_config "gopkg.in/src-d/go-git.v4/config"
@@ -12,15 +13,18 @@ import (
 	git_transport "gopkg.in/src-d/go-git.v4/plumbing/transport"
 )
 
-var ErrNoRepo = git.ErrRepositoryNotExists
-
 type repo struct {
 	path string
 	git  *git.Repository
 }
 
-func clone(url string, path string, auths auths) (*repo, error) {
-	auth, err := auths.get(url)
+func clone(
+	url string,
+	remote string,
+	path string,
+	auth auth.Auth,
+) (*repo, error) {
+	method, err := auth.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +33,8 @@ func clone(url string, path string, auths auths) (*repo, error) {
 
 	git, err := git.PlainClone(path, false, &git.CloneOptions{
 		NoCheckout: true,
-		Auth:       auth,
+		RemoteName: remote,
+		Auth:       method,
 		URL:        url,
 	})
 	if err != nil {
@@ -144,7 +149,10 @@ func (repo *repo) list(ns string) (refs, error) {
 	)
 }
 
-func (repo *repo) auth(name string, auths auths) (git_transport.AuthMethod, error) {
+func (repo *repo) auth(
+	name string,
+	auth auth.Auth,
+) (git_transport.AuthMethod, error) {
 	remote, err := repo.git.Remote(name)
 	if err != nil {
 		return nil, err
@@ -154,24 +162,24 @@ func (repo *repo) auth(name string, auths auths) (git_transport.AuthMethod, erro
 
 	log.Debugf("{auth} remote %q | url %q", name, url)
 
-	auth, err := auths.get(url)
+	method, err := auth.Get(url)
 	if err != nil {
 		return nil, err
 	}
 
-	return auth, nil
+	return method, nil
 }
 
-func (repo *repo) pull(name string, spec refspec, auths auths) error {
+func (repo *repo) pull(name string, spec refspec, auth auth.Auth) error {
 	log.Debugf("{pull} %s %s", name, spec.to())
 
-	auth, err := repo.auth(name, auths)
+	method, err := repo.auth(name, auth)
 	if err != nil {
 		return err
 	}
 
 	err = repo.git.Fetch(&git.FetchOptions{
-		Auth:       auth,
+		Auth:       method,
 		RemoteName: name,
 		RefSpecs:   []git_config.RefSpec{git_config.RefSpec(spec.to())},
 	})
@@ -192,16 +200,16 @@ func (repo *repo) pull(name string, spec refspec, auths auths) error {
 	}
 }
 
-func (repo *repo) push(name string, spec refspec, auths auths) error {
+func (repo *repo) push(name string, spec refspec, auth auth.Auth) error {
 	log.Debugf("{push} %s %s", name, spec.from())
 
-	auth, err := repo.auth(name, auths)
+	method, err := repo.auth(name, auth)
 	if err != nil {
 		return err
 	}
 
 	err = repo.git.Push(&git.PushOptions{
-		Auth:       auth,
+		Auth:       method,
 		RemoteName: name,
 		RefSpecs:   []git_config.RefSpec{git_config.RefSpec(spec.from())},
 		Prune:      true,

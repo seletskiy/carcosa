@@ -1,28 +1,32 @@
 package carcosa
 
-func sync(
-	repo *repo,
+import (
+	"github.com/seletskiy/carcosa/pkg/carcosa/auth"
+)
+
+type SyncStats struct {
+	Ours, Thys struct {
+		Add int
+		Del int
+	}
+}
+
+func (repo *repo) Sync(
 	remote string,
 	ns string,
-	auths auths,
-) error {
-	var stat struct {
-		ours, thys struct {
-			add int
-			del int
-		}
-	}
-
+	auth auth.Auth,
+	push bool,
+) (*SyncStats, error) {
 	log.Infof("{sync} with: %s", remote)
 
-	err := repo.pull(remote, refspec(ns), auths)
+	err := repo.pull(remote, refspec(ns), auth)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	refs, err := repo.list(ns)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var (
@@ -45,15 +49,17 @@ func sync(
 		}
 	}
 
+	var stats SyncStats
+
 	for token, ref := range adds {
 		thys[token] = ref.as(external)
 
 		err = repo.update(thys[token])
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		stat.thys.add++
+		stats.Thys.Add++
 	}
 
 	if len(thys) != 0 {
@@ -61,32 +67,34 @@ func sync(
 			if ref, ok := thys[token]; ok {
 				err := repo.delete(ref)
 				if err != nil {
-					return err
+					return nil, err
 				}
 
 				delete(thys, token)
 
-				stat.thys.del++
+				stats.Thys.Del++
 			}
 		}
 
-		err = repo.push(remote, refspec(ns), auths)
-		if err != nil {
-			return err
+		if push {
+			err = repo.push(remote, refspec(ns), auth)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	for _, ref := range dels {
 		err := repo.delete(ref)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	for _, ref := range adds {
 		err := repo.delete(ref)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -94,10 +102,10 @@ func sync(
 		if _, ok := thys[token]; !ok {
 			err := repo.delete(ref)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
-			stat.ours.del++
+			stats.Ours.Del++
 		}
 	}
 
@@ -105,25 +113,17 @@ func sync(
 		if _, ok := ours[token]; !ok {
 			err := repo.update(ref.token())
 			if err != nil {
-				return err
+				return nil, err
 			}
 
-			stat.ours.add++
+			stats.Ours.Add++
 		}
 
 		err = repo.delete(ref)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	log.Infof(
-		"{sync} done: sent +%d -%d | recv +%d -%d",
-		stat.thys.add,
-		stat.thys.del,
-		stat.ours.add,
-		stat.ours.del,
-	)
-
-	return nil
+	return &stats, nil
 }

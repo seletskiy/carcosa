@@ -29,6 +29,6 @@ func init() {
 	))
 }
 
-func GetLogger() *lorg.Log {
+func Logger() *lorg.Log {
 	return log
 }

@@ -1,4 +1,4 @@
-package carcosa
+package auth
 
 import (
 	"fmt"
@@ -11,10 +11,14 @@ import (
 	git_ssh "gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
 )
 
-type auths map[string]git_transport.AuthMethod
+type Auth map[string]git_transport.AuthMethod
 
-func (auths auths) add(definition string) error {
-	var auth git_transport.AuthMethod
+func New() Auth {
+	return Auth{}
+}
+
+func (auth Auth) Add(definition string) error {
+	var method git_transport.AuthMethod
 
 	spec := strings.SplitN(definition, ":", 2)
 
@@ -38,7 +42,7 @@ func (auths auths) add(definition string) error {
 			)
 		}
 
-		auth = &git_ssh.PublicKeys{
+		method = &git_ssh.PublicKeys{
 			Signer: signer,
 		}
 
@@ -49,12 +53,12 @@ func (auths auths) add(definition string) error {
 		)
 	}
 
-	auths[spec[0]] = auth
+	auth[spec[0]] = method
 
 	return nil
 }
 
-func (auths auths) get(path string) (git_transport.AuthMethod, error) {
+func (auth Auth) Get(path string) (git_transport.AuthMethod, error) {
 	endpoint, err := git_transport.NewEndpoint(path)
 	if err != nil {
 		return nil, karma.
@@ -65,19 +69,19 @@ func (auths auths) get(path string) (git_transport.AuthMethod, error) {
 			)
 	}
 
-	auth := auths[endpoint.Protocol]
+	method := auth[endpoint.Protocol]
 	if auth == nil {
 		return nil, nil
 	}
 
-	switch auth := auth.(type) {
+	switch method := method.(type) {
 	case *git_ssh.PublicKeys:
 		if endpoint.User != "" {
-			auth.User = endpoint.User
+			method.User = endpoint.User
 		} else {
-			auth.User = "git"
+			method.User = "git"
 		}
 	}
 
-	return auth, nil
+	return method, nil
 }
