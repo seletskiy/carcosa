@@ -308,7 +308,7 @@ func (cli *cli) list(opts Opts) error {
 		return err
 	}
 
-	secrets, err := cli.carcosa.List(opts.ValuePath, key)
+	secrets, err := cli.carcosa.List(key)
 	if err != nil {
 		return err
 	}

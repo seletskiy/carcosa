@@ -184,7 +184,7 @@ func (carcosa *Carcosa) Sync(
 	return stats, nil
 }
 
-func (carcosa *Carcosa) List(path string, master []byte) ([]*Secret, error) {
+func (carcosa *Carcosa) List(master []byte) ([]*Secret, error) {
 	repo, err := open(carcosa.path)
 	if err != nil {
 		return nil, err
