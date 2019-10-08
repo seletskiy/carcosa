@@ -97,7 +97,7 @@ func (cli *cli) run(opts Opts) error {
 }
 
 func (cli *cli) init(opts Opts, auth auth.Auth) error {
-	err := cli.carcosa.Init(opts.ArgURL, opts.ValueRemote, auth)
+	err := cli.carcosa.Init(opts.ValueRemote, opts.ArgURL, opts.ValueNamespace)
 	if err != nil {
 		return err
 	}

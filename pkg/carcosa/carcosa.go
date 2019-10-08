@@ -154,10 +154,10 @@ func (carcosa *Carcosa) Remove(token []byte, master []byte) error {
 	return nil
 }
 
-func (carcosa *Carcosa) Init(url string, remote string, auth auth.Auth) error {
-	_, err := clone(url, remote, carcosa.path, auth)
+func (carcosa *Carcosa) Init(remote string, url string, ns string) error {
+	_, err := initialize(carcosa.path, remote, url, ns)
 	if err != nil {
-		return karma.Format(err, "unable to clone")
+		return karma.Format(err, "unable to initialize")
 	}
 
 	return nil

@@ -18,6 +18,44 @@ type repo struct {
 	git  *git.Repository
 }
 
+func initialize(
+	path string,
+	remote string,
+	url string,
+	ns string,
+) (*repo, error) {
+	log.Infof("{init} %s (%s: %s)", path, remote, url)
+
+	facts := karma.
+		Describe("path", path).
+		Describe("url", url)
+
+	git, err := git.PlainInit(path, false)
+	if err != nil {
+		return nil, facts.Format(
+			err,
+			"unable to init git repository",
+		)
+	}
+
+	_, err = git.CreateRemote(&git_config.RemoteConfig{
+		URLs:  []string{url},
+		Name:  remote,
+		Fetch: []git_config.RefSpec{git_config.RefSpec(refspec(ns).to())},
+	})
+	if err != nil {
+		return nil, facts.Describe("remote", remote).Format(
+			err,
+			"unable to create remote",
+		)
+	}
+
+	return &repo{
+		path: path,
+		git:  git,
+	}, nil
+}
+
 func clone(
 	url string,
 	remote string,

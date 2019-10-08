@@ -59,12 +59,9 @@ Usage:
 
 Options:
     -h --help      Show this help.
-    -I --init      Clone remote repository and fetch secrets.
-    -S --sync      Initializes local storage from the remote or sync with
-                    already initialized storage (pull & push).  Push can be
-                    prohibited by using '-n' flag.
-                    If target directory is empty, then remote will be cloned
-                    and therefore should be specified via '-r' flag.
+    -I --init      Initialize remote repository and fetch secrets.
+    -S --sync      Sync secrets with remote storage (pull & push).
+                    Push can be prohibited by using '-n' flag.
     -A --add       Add secret for specified token. Secret will be read from
                     stdin.
     -M --modify    Modify secret for specified token in place. '-e' flag can be
