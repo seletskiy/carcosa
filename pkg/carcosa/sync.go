@@ -4,11 +4,14 @@ import (
 	"github.com/seletskiy/carcosa/pkg/carcosa/auth"
 )
 
+type SyncStatsSide struct {
+	Add int `json:"add"`
+	Del int `json:"del"`
+}
+
 type SyncStats struct {
-	Ours, Thys struct {
-		Add int
-		Del int
-	}
+	Ours SyncStatsSide `json:"ours"`
+	Thys SyncStatsSide `json:"thys"`
 }
 
 func (repo *repo) Sync(
