@@ -70,7 +70,7 @@ func (auth Auth) Get(path string) (git_transport.AuthMethod, error) {
 	}
 
 	method := auth[endpoint.Protocol]
-	if auth == nil {
+	if method == nil {
 		return nil, nil
 	}
 
@@ -81,6 +81,8 @@ func (auth Auth) Get(path string) (git_transport.AuthMethod, error) {
 		} else {
 			method.User = "git"
 		}
+
+		auth[endpoint.Protocol] = method
 	}
 
 	return method, nil
