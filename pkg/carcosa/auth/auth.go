@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"io/ioutil"
+	"net"
 	"strings"
 
 	"github.com/reconquest/karma-go"
@@ -44,6 +45,15 @@ func (auth Auth) Add(definition string) error {
 
 		method = &git_ssh.PublicKeys{
 			Signer: signer,
+			HostKeyCallbackHelper: git_ssh.HostKeyCallbackHelper{
+				HostKeyCallback: func(
+					hostname string,
+					remote net.Addr,
+					key ssh.PublicKey,
+				) error {
+					return nil
+				},
+			},
 		}
 
 	default:
