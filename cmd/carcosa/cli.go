@@ -93,7 +93,22 @@ func (cli *cli) run(opts Opts) error {
 		fn = synced(fn)
 	}
 
-	return fn(opts)
+	err := fn(opts)
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case opts.ModeAdd, opts.ModeRemove, opts.ModeModify:
+		if !opts.FlagNoSync {
+			err := cli.sync(opts, auth)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (cli *cli) init(opts Opts, auth auth.Auth) error {
