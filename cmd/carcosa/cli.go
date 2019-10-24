@@ -33,10 +33,11 @@ type Opts struct {
 	ValueEditor          string   `docopt:"-e"`
 	ValueAuth            []string `docopt:"-a"`
 	FlagNoSync           bool     `docopt:"-n"`
-	FlagNoPush           bool     `docopt:"-n"`
 	FlagSyncFirst        bool     `docopt:"-y"`
 	FlagUseMasterCache   bool     `docopt:"-c"`
 	FlagVerbose          int      `docopt:"-v"`
+
+	noPush bool
 }
 
 type cli struct {
@@ -52,6 +53,10 @@ func (cli *cli) run(opts Opts) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if opts.FlagNoSync {
+		opts.noPush = opts.FlagNoSync
 	}
 
 	switch {
@@ -117,13 +122,13 @@ func (cli *cli) init(opts Opts, auth auth.Auth) error {
 		return err
 	}
 
-	opts.FlagNoPush = true
+	opts.noPush = true
 
 	return cli.sync(opts, auth)
 }
 
 func (cli *cli) sync(opts Opts, auth auth.Auth) error {
-	stats, err := cli.carcosa.Sync(opts.ValueRemote, auth, !opts.FlagNoPush)
+	stats, err := cli.carcosa.Sync(opts.ValueRemote, auth, !opts.noPush)
 	if err != nil {
 		return err
 	}
