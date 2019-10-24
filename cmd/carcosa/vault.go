@@ -26,6 +26,8 @@ func (vault *vault) Key() ([]byte, error) {
 }
 
 func (vault *vault) Get(token string) ([]byte, error) {
+	log.Debugf("reading master-key file: %s", vault.file(token))
+
 	body, err := ioutil.ReadFile(vault.file(token))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -45,6 +47,8 @@ func (vault *vault) Set(token string, body []byte) error {
 			Describe("path", vault.path).
 			Format(err, "unable to create dir for storing master key cache")
 	}
+
+	log.Debugf("writing master-key file: %s", vault.file(token))
 
 	err = ioutil.WriteFile(vault.file(token), body, 0600)
 	if err != nil {
