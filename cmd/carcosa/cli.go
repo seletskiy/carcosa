@@ -32,12 +32,10 @@ type Opts struct {
 	ValueMasterFile      string   `docopt:"-k"`
 	ValueEditor          string   `docopt:"-e"`
 	ValueAuth            []string `docopt:"-a"`
-	FlagNoSync           bool     `docopt:"-n"`
+	FlagNoPushOrNoPull   bool     `docopt:"-n"`
 	FlagSyncFirst        bool     `docopt:"-y"`
 	FlagUseMasterCache   bool     `docopt:"-c"`
 	FlagVerbose          int      `docopt:"-v"`
-
-	noPush bool
 }
 
 type cli struct {
@@ -55,10 +53,6 @@ func (cli *cli) run(opts Opts) error {
 		}
 	}
 
-	if opts.FlagNoSync {
-		opts.noPush = opts.FlagNoSync
-	}
-
 	switch {
 	case opts.ModeInit:
 		return cli.init(opts, auth)
@@ -68,48 +62,41 @@ func (cli *cli) run(opts Opts) error {
 		return cli.keycheck(opts)
 	}
 
-	var fn func(Opts) error
-
-	switch {
-	case opts.ModeAdd:
-		fn = cli.add
-	case opts.ModeGet:
-		fn = cli.get
-	case opts.ModeList:
-		fn = cli.list
-	case opts.ModeModify:
-		fn = cli.modify
-	case opts.ModeRemove:
-		fn = cli.remove
-	}
-
-	synced := func(fn func(opts Opts) error) func(opts Opts) error {
-		return func(opts Opts) error {
-			err := cli.sync(opts, auth)
-			if err != nil {
-				return err
-			}
-
-			return fn(opts)
+	if opts.FlagSyncFirst {
+		err := cli.sync(opts, auth)
+		if err != nil {
+			return err
 		}
 	}
 
-	if opts.FlagSyncFirst {
-		fn = synced(fn)
+	var err error
+
+	switch {
+	case opts.ModeAdd:
+		err = cli.add(opts)
+	case opts.ModeGet:
+		err = cli.get(opts)
+	case opts.ModeList:
+		err = cli.list(opts)
+	case opts.ModeModify:
+		err = cli.modify(opts)
+	case opts.ModeRemove:
+		err = cli.remove(opts)
 	}
 
-	err := fn(opts)
 	if err != nil {
 		return err
 	}
 
 	switch {
 	case opts.ModeAdd, opts.ModeRemove, opts.ModeModify:
-		if !opts.FlagNoSync {
-			err := cli.sync(opts, auth)
-			if err != nil {
-				return err
-			}
+		if opts.FlagNoPushOrNoPull {
+			return nil
+		}
+
+		err := cli.sync(opts, auth)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -122,13 +109,19 @@ func (cli *cli) init(opts Opts, auth auth.Auth) error {
 		return err
 	}
 
-	opts.noPush = true
+	// Disable push in subsequent sync, since it is not needed for init
+	// operation.
+	opts.FlagNoPushOrNoPull = true
 
 	return cli.sync(opts, auth)
 }
 
 func (cli *cli) sync(opts Opts, auth auth.Auth) error {
-	stats, err := cli.carcosa.Sync(opts.ValueRemote, auth, !opts.noPush)
+	stats, err := cli.carcosa.Sync(
+		opts.ValueRemote,
+		auth,
+		!opts.FlagNoPushOrNoPull,
+	)
 	if err != nil {
 		return err
 	}
