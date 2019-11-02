@@ -4,12 +4,12 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"strings"
 
 	"github.com/docopt/docopt-go"
 	"github.com/kovetskiy/lorg"
 	"github.com/seletskiy/carcosa/pkg/carcosa"
 	"github.com/seletskiy/carcosa/pkg/carcosa/cache"
+	"github.com/seletskiy/carcosa/pkg/carcosa/vault"
 )
 
 var usage = `carcosa - git-backed secrets storage.
@@ -58,43 +58,45 @@ Usage:
     carcosa [options] [-v]... -F -c
 
 Options:
-    -h --help      Show this help.
-    -I --init      Initialize remote repository and fetch secrets.
-    -S --sync      Sync secrets with remote storage (pull & push).
-                    Push can be prohibited by using '-n' flag.
-    -A --add       Add secret for specified token. Secret will be read from
-                    stdin.
-    -M --modify    Modify secret for specified token in place. '-e' flag can be
-                    used to set editor.
-    -G --get       Get secret by specified token.
-    -L --list      List tokens.
-    -R --remove    Remove secret by specified token.
-    -F --keycheck  Check that master password cache presents and exit if it is
-                    not. Suitable for scripting purposes.
-    -s <ref-ns>    Use specified ref namespace.
-                    [default: refs/tokens/]
-    -p <path>      Set git repo path to store secrets in.
-                    [default: $SECRETS_PATH]
-    -n             Do not interact with remote repo (no push / no pull).
-                    For sync mode: pull, but do not push.
-    -y             Sync with remote before doing anything else.
-    -r <remote>    Remote repository name to use.
-                    [default: origin].
-    -c             Use cache for master password. Master password will be
-                    encrypted using unique encryption key for current machine.
-    -f <cache>     Cache file prefix for master password. Actual file name will
-                    ends with hash suffix.
-                    [default: $CACHE_PATH]
-    -k <file>      Read master key from specified file. WARNING: that can be
-                    unsecure; use of fifo pipe as a file is preferable.
-    -e <editor>    Use specified editor for modifying secret in place.
-                    [default: $EDITOR]
-    -a <auth>...   Specify authentication parameters for various remote
-                    protocols.
-                    Supported protocols:
-                    * SSH: ssh:<private-key-path>
-                    [default: ssh:$AUTH_SSH_KEY_PATH]
-    -v             Verbose output.
+    -h --help          Show this help.
+    -I --init          Initialize remote repository and fetch secrets.
+    -S --sync          Sync secrets with remote storage (pull & push).
+                        Push can be prohibited by using '-n' flag.
+    -A --add           Add secret for specified token. Secret will be read from
+                        stdin.
+    -M --modify        Modify secret for specified token in place. '-e' flag can be
+                        used to set editor.
+    -G --get           Get secret by specified token.
+    -L --list          List tokens.
+    -R --remove        Remove secret by specified token.
+    -F --keycheck      Check that master password cache presents and exit if it is
+                        not. Suitable for scripting purposes.
+    -s <ref-ns>        Use specified ref namespace.
+                        [default: refs/tokens/]
+    -p <path>          Set git repo path to store secrets in.
+                        [default: $SECRETS_PATH]
+    -n                 Do not interact with remote repo (no push / no pull).
+                        For sync mode: pull, but do not push.
+    -y                 Sync with remote before doing anything else.
+    -r <remote>        Remote repository name to use.
+                        [default: origin].
+    -c                 Use cache for master password. Master password will be
+                        encrypted using unique encryption key for current machine.
+    -f <cache>         Cache file prefix for master password. Actual file name will
+                        ends with hash suffix.
+                        [default: $CACHE_PATH]
+    -x <key>           Path to unique encryption key for current machine.
+                        [default: $KEY_PATH]
+    -k <file>          Read master key from specified file. WARNING: that can be
+                        unsecure; use of fifo pipe as a file is preferable.
+    -e <editor>        Use specified editor for modifying secret in place.
+                        [default: $EDITOR]
+    -a <auth>...       Specify authentication parameters for various remote
+                        protocols.
+                        Supported protocols:
+                        * SSH: ssh:<private-key-path>
+                        [default: ssh:$AUTH_SSH_KEY_PATH]
+    -v                 Verbose output.
 `
 
 func init() {
@@ -105,16 +107,19 @@ func init() {
 
 	home := human.HomeDir
 
-	usage = strings.NewReplacer(
-		"$EDITOR",
-		/* -> */ os.Getenv("EDITOR"),
-		"$SECRETS_PATH",
-		/* -> */ filepath.Join(home, ".secrets"),
-		"$CACHE_PATH",
-		/* -> */ filepath.Join(home, ".cache", "carcosa", "master"),
-		"$AUTH_SSH_KEY_PATH",
-		/* -> */ filepath.Join(home, ".ssh", "id_rsa"),
-	).Replace(usage)
+	env := func(key, defaultValue string) {
+		if os.Getenv(key) == "" {
+			os.Setenv(key, defaultValue)
+		}
+	}
+
+	env("SECRETS_PATH", filepath.Join(home, ".secrets"))
+	env("AUTH_SSH_KEY_PATH", filepath.Join(home, ".ssh", "id_rsa"))
+	env("CACHE_PATH", filepath.Join(home, ".cache", "carcosa", "master"))
+	env("CONFIG_PATH", filepath.Join(home, ".config", "carcosa", "carcosa.conf"))
+	env("KEY_PATH", "/etc/machine-id")
+
+	usage = os.ExpandEnv(usage)
 }
 
 var log = carcosa.Logger()
@@ -145,9 +150,10 @@ func main() {
 
 	cli := cli{
 		carcosa: carcosa.NewDefault(opts.ValuePath, opts.ValueNamespace),
-		cache: cache.NewDefault(&vault{
-			path: opts.ValueMasterCachePath,
-		}),
+		cache: cache.NewDefault(vault.NewMaster(
+			opts.ValueMasterCachePath,
+			opts.ValueMasterKeyPath,
+		)),
 	}
 
 	err = cli.run(opts)
