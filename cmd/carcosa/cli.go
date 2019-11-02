@@ -29,6 +29,7 @@ type Opts struct {
 	ValuePath            string   `docopt:"-p"`
 	ValueRemote          string   `docopt:"-r"`
 	ValueMasterCachePath string   `docopt:"-f"`
+	ValueMasterKeyPath   string   `docopt:"-x"`
 	ValueMasterFile      string   `docopt:"-k"`
 	ValueEditor          string   `docopt:"-e"`
 	ValueAuth            []string `docopt:"-a"`

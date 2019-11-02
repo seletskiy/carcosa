@@ -7,24 +7,19 @@ import (
 
 	"github.com/reconquest/karma-go"
 	"github.com/seletskiy/carcosa/pkg/carcosa/crypto"
+	"github.com/seletskiy/carcosa/pkg/carcosa/vault"
 )
 
-type Vault interface {
-	Key() ([]byte, error)
-	Get(token string) ([]byte, error)
-	Set(token string, body []byte) error
-}
-
 type Cache struct {
-	vault Vault
+	vault vault.Vault
 	core  *crypto.Core
 }
 
-func NewDefault(vault Vault) *Cache {
+func NewDefault(vault vault.Vault) *Cache {
 	return New(vault, &crypto.DefaultCore)
 }
 
-func New(vault Vault, core *crypto.Core) *Cache {
+func New(vault vault.Vault, core *crypto.Core) *Cache {
 	return &Cache{
 		vault: vault,
 		core:  core,
