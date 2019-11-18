@@ -182,7 +182,7 @@ func (cli *cli) key(opts Opts) ([]byte, error) {
 				)
 			}
 
-			if key != nil {
+			if key != nil && len(key) != 0 {
 				return key, nil
 			}
 
