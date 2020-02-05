@@ -51,7 +51,8 @@ Usage:
     carcosa [options] [-v]... -I [-a=]... [-n] [-r <remote>] <url>
     carcosa [options] [-v]... -S [-a=]... [-n] [-r <remote>]
     carcosa [options] [-v]... -A [-a=]... [-c] [-n] <token>
-    carcosa [options] [-v]... -M [-a=]... [-c] [-n] <token>
+    carcosa [options] [-v]... -E [-a=]... [-c] [-n] <token>
+    carcosa [options] [-v]... -M [-a=]... [-c] [-n] <token> <new-token>
     carcosa [options] [-v]... -G [-a=]... [-c] [-y] <token>
     carcosa [options] [-v]... -L [-a=]... [-c] [-y]
     carcosa [options] [-v]... -R [-a=]... [-c] [-n] <token>
@@ -64,8 +65,9 @@ Options:
                         Push can be prohibited by using '-n' flag.
     -A --add           Add secret for specified token. Secret will be read from
                         stdin.
-    -M --modify        Modify secret for specified token in place. '-e' flag can be
+    -E --edit          Edit secret for specified token in place. '-e' flag can be
                         used to set editor.
+    -M --move          Move/rename specified token.
     -G --get           Get secret by specified token.
     -L --list          List tokens.
     -R --remove        Remove secret by specified token.

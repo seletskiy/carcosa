@@ -15,16 +15,20 @@ import (
 )
 
 type Opts struct {
-	ArgToken             string   `docopt:"<token>"`
-	ArgURL               string   `docopt:"<url>"`
-	ModeInit             bool     `docopt:"--init"`
-	ModeSync             bool     `docopt:"--sync"`
-	ModeAdd              bool     `docopt:"--add"`
-	ModeModify           bool     `docopt:"--modify"`
-	ModeGet              bool     `docopt:"--get"`
-	ModeList             bool     `docopt:"--list"`
-	ModeRemove           bool     `docopt:"--remove"`
-	ModeKeycheck         bool     `docopt:"--keycheck"`
+	ArgToken    string `docopt:"<token>"`
+	ArgNewToken string `docopt:"<new-token>"`
+	ArgURL      string `docopt:"<url>"`
+
+	ModeInit     bool `docopt:"--init"`
+	ModeSync     bool `docopt:"--sync"`
+	ModeAdd      bool `docopt:"--add"`
+	ModeEdit     bool `docopt:"--edit"`
+	ModeGet      bool `docopt:"--get"`
+	ModeList     bool `docopt:"--list"`
+	ModeRemove   bool `docopt:"--remove"`
+	ModeKeycheck bool `docopt:"--keycheck"`
+	ModeMove     bool `docopt:"--move"`
+
 	ValueNamespace       string   `docopt:"-s"`
 	ValuePath            string   `docopt:"-p"`
 	ValueRemote          string   `docopt:"-r"`
@@ -33,10 +37,11 @@ type Opts struct {
 	ValueMasterFile      string   `docopt:"-k"`
 	ValueEditor          string   `docopt:"-e"`
 	ValueAuth            []string `docopt:"-a"`
-	FlagNoPushOrNoPull   bool     `docopt:"-n"`
-	FlagSyncFirst        bool     `docopt:"-y"`
-	FlagUseMasterCache   bool     `docopt:"-c"`
-	FlagVerbose          int      `docopt:"-v"`
+
+	FlagNoPushOrNoPull bool `docopt:"-n"`
+	FlagSyncFirst      bool `docopt:"-y"`
+	FlagUseMasterCache bool `docopt:"-c"`
+	FlagVerbose        int  `docopt:"-v"`
 }
 
 type cli struct {
@@ -79,10 +84,12 @@ func (cli *cli) run(opts Opts) error {
 		err = cli.get(opts)
 	case opts.ModeList:
 		err = cli.list(opts)
-	case opts.ModeModify:
-		err = cli.modify(opts)
+	case opts.ModeEdit:
+		err = cli.edit(opts)
 	case opts.ModeRemove:
 		err = cli.remove(opts)
+	case opts.ModeMove:
+		err = cli.move(opts)
 	}
 
 	if err != nil {
@@ -90,7 +97,7 @@ func (cli *cli) run(opts Opts) error {
 	}
 
 	switch {
-	case opts.ModeAdd, opts.ModeRemove, opts.ModeModify:
+	case opts.ModeAdd, opts.ModeRemove, opts.ModeEdit, opts.ModeMove:
 		if opts.FlagNoPushOrNoPull {
 			return nil
 		}
@@ -279,7 +286,7 @@ func (cli *cli) get(opts Opts) error {
 	return nil
 }
 
-func (cli *cli) modify(opts Opts) error {
+func (cli *cli) edit(opts Opts) error {
 	key, err := cli.key(opts)
 	if err != nil {
 		return err
@@ -339,6 +346,38 @@ func (cli *cli) list(opts Opts) error {
 
 func (cli *cli) keycheck(opts Opts) error {
 	_, err := cli.key(opts)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (cli *cli) move(opts Opts) error {
+	key, err := cli.key(opts)
+	if err != nil {
+		return err
+	}
+
+	stream, err := cli.carcosa.Get([]byte(opts.ArgToken), key)
+	if err != nil {
+		return err
+	}
+
+	plaintext, err := ioutil.ReadAll(stream)
+	if err != nil {
+		return karma.Format(
+			err,
+			"unable to read secret",
+		)
+	}
+
+	err = cli.carcosa.Remove([]byte(opts.ArgToken), key)
+	if err != nil {
+		return err
+	}
+
+	err = cli.carcosa.Add([]byte(opts.ArgNewToken), plaintext, key)
 	if err != nil {
 		return err
 	}
