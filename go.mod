@@ -5,6 +5,7 @@ go 1.12
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
+	github.com/juju/fslock v0.0.0-20160525022230-4d5c94c67b4b
 	github.com/kovetskiy/lorg v0.0.0-20190701130800-9c6042b7edb0
 	github.com/reconquest/colorgful v0.0.0-20190805091748-28d18b838c4a
 	github.com/reconquest/karma-go v0.0.0-20190411204320-1094651bd246

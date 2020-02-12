@@ -2,8 +2,10 @@ package carcosa
 
 import (
 	"io/ioutil"
+	"path/filepath"
 	"strings"
 
+	"github.com/juju/fslock"
 	"github.com/reconquest/karma-go"
 	"github.com/seletskiy/carcosa/pkg/carcosa/auth"
 
@@ -16,6 +18,11 @@ import (
 type repo struct {
 	path string
 	git  *git.Repository
+
+	mutex struct {
+		path   string
+		handle *fslock.Lock
+	}
 }
 
 func initialize(
@@ -300,4 +307,48 @@ func (repo *repo) cat(hash string) ([]byte, error) {
 	log.Tracef("{cat} %s = %d bytes", hash, len(data))
 
 	return data, nil
+}
+
+func (repo *repo) lock() error {
+	config, err := repo.git.Config()
+	if err != nil {
+		return karma.Format(
+			err,
+			"unable to get git config",
+		)
+	}
+
+	if config.Core.IsBare {
+		repo.mutex.path = filepath.Join(repo.path, "carcosa.lock")
+	} else {
+		repo.mutex.path = filepath.Join(repo.path, ".git", "carcosa.lock")
+	}
+
+	log.Tracef("{lock} obtaining exclusive lock %q", repo.mutex.path)
+
+	repo.mutex.handle = fslock.New(repo.mutex.path)
+
+	err = repo.mutex.handle.Lock()
+	if err != nil {
+		return karma.Format(
+			err,
+			"unable to obtain exclusive lock %q",
+			repo.mutex.path,
+		)
+	}
+
+	return nil
+}
+
+func (repo *repo) unlock() error {
+	err := repo.mutex.handle.Unlock()
+	if err != nil {
+		return karma.Format(
+			err,
+			"unable to release exclusive repository lock %q",
+			repo.mutex.path,
+		)
+	}
+
+	return nil
 }
