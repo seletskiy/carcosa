@@ -2,6 +2,7 @@ package carcosa
 
 import (
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -328,7 +329,7 @@ func (repo *repo) lock() error {
 
 	repo.mutex.handle = fslock.New(repo.mutex.path)
 
-	err = repo.mutex.handle.Lock()
+	err = repo.mutex.handle.TryLock()
 	if err != nil {
 		return karma.Format(
 			err,
@@ -341,7 +342,16 @@ func (repo *repo) lock() error {
 }
 
 func (repo *repo) unlock() error {
-	err := repo.mutex.handle.Unlock()
+	err := os.Remove(repo.mutex.path)
+	if err != nil {
+		return karma.Format(
+			err,
+			"unable to remove lock file %q",
+			repo.mutex.path,
+		)
+	}
+
+	err = repo.mutex.handle.Unlock()
 	if err != nil {
 		return karma.Format(
 			err,
