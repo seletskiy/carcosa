@@ -48,8 +48,8 @@ Remote sync is controlled via '-n' and '-y' flags, see more in usage.
 
 Usage:
     carcosa [options] [-v]... -h | --help | --version
-    carcosa [options] [-v]... -I [-a=]... [-n] [-r <remote>] <url>
-    carcosa [options] [-v]... -S [-a=]... [-n] [-r <remote>]
+    carcosa [options] [-v]... -I [-a=]... [-c] [-n] [-r <remote>] <url>
+    carcosa [options] [-v]... -S [-a=]... [-c] [-n] [-r <remote>]
     carcosa [options] [-v]... -A [-a=]... [-c] [-n] <token>
     carcosa [options] [-v]... -E [-a=]... [-c] [-n] <token>
     carcosa [options] [-v]... -M [-a=]... [-c] [-n] <token> <new-token>
