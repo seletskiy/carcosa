@@ -13,47 +13,35 @@ without another. No one can get the list of tokens without the knowledge of the
 
 ## How to use carcosa?
 
-### Using existing repo
-
-You can use *carcosa* to store secrets in any repository. You can use `-S` to
-sync local repo with remote:
-
+### Installation
 ```
-carcosa -S
+git clone https://github.com/seletskiy/carcosa
+cd carcosa/cmd/carcosa
+go install .
 ```
+This will install *carcosa* binary in your $GOPATH
 
-### Using new repo
-
-First, you need to initialize repository via `git init`.
-
-Then you can set repo remote via `git remote add` or specify remote every
-time via `-r` flag.
-
+### Quickstart
+To store your secrets and tokens, *carcosa* expects a git repository in path $HOME/.secrets/. If you do not have one already, follow these steps
 ```
+mkdir ~/.secrets/
+cd ~/.secrets/
 git init
-carcosa -Sr git://path.to/remote.git
+```
+If you wish to use some other git repository, you can specify the path using `-p` flag
+```
+carcosa -A token1 -p ./
+or 
+carcosa -A token1 -p /path/to/some/repository/
 ```
 
-### Adding secrets
 
-Secrets can be added by using `-A` flag:
-
+#### Adding Secrets
+*carcosa* stores secrets (like passwords) under the tokens (e.g. names). Secrets can be added by using `-A` flag:
 ```
-carcosa -A my-super-password
+carcosa -A token-name-here
 ```
-
-Note that a new added secret will be synced to the remote (if any)
-automatically. If you want to add a new secret locally only, use `-n` flag:
-
-```
-carcosa -An my-super-password
-```
-
-Then you can sync it remote any time using `-S` flag:
-
-```
-carcosa -S
-```
+*carcosa* will then read input secret from STDIN. Once you are done typing hit `CTRL+D` to send EOF. This will store your secret under token `token-name-here` in $HOME/.secrets/ unless a custom path to repository is specified.
 
 ### Listing secrets
 
@@ -69,7 +57,6 @@ want to sync it before, use `-y` flag:
 ```
 carcosa -Ly
 ```
-
 ### Getting secret by token
 
 ```
@@ -80,6 +67,33 @@ It will output contents of the secret, decrypted by master password.
 
 Note that it will not sync with the remote repo first. If you want to, you
 can specify flag `-y`
+
+
+### Sync your tokens/secrets to remote
+You can either set remote to your *carcosa* git repository, via `git remote add` or specify remote every
+time via `-r` flag.
+
+```
+git init
+carcosa -Sr git://path.to/remote.git
+```
+
+Note that a new added secret will be synced to the remote (if any)
+automatically. If you want to add a new secret locally only, use `-n` flag:
+
+```
+carcosa -An my-super-password
+```
+
+Then you can sync it remote any time using `-S` flag:
+
+```
+carcosa -S
+```
+
+
+
+
 
 ## Advanced usage
 
