@@ -14,34 +14,46 @@ without another. No one can get the list of tokens without the knowledge of the
 ## How to use carcosa?
 
 ### Installation
+
+```bash
+go get github.com/seletskiy/carcosa/cmd/carcosa
 ```
-git clone https://github.com/seletskiy/carcosa
-cd carcosa/cmd/carcosa
-go install .
-```
-This will install *carcosa* binary in your $GOPATH
+
+This will install *carcosa* binary in your `$GOPATH`.
 
 ### Quickstart
-To store your secrets and tokens, *carcosa* expects a git repository in path $HOME/.secrets/. If you do not have one already, follow these steps
+
+To store your secrets and tokens, *carcosa* expects a git repository in path
+`$HOME/.secrets/`. If you do not have one already, follow these steps
+
+```bash
+git init ~/.secrets
 ```
-mkdir ~/.secrets/
-cd ~/.secrets/
-git init
-```
-If you wish to use some other git repository, you can specify the path using `-p` flag
-```
-carcosa -A token1 -p ./
-or 
-carcosa -A token1 -p /path/to/some/repository/
+
+If you wish to use some other git repository, you can specify the path using
+`-p` flag:
+
+```bash
+carcosa -A my-token -p .
+# or
+carcosa -A my-token -p /path/to/some/repository/
 ```
 
 
 #### Adding Secrets
-*carcosa* stores secrets (like passwords) under the tokens (e.g. names). Secrets can be added by using `-A` flag:
+
+*carcosa* stores secrets (like passwords) under the tokens (e.g. names).
+Secrets can be added by using `-A` flag:
+
 ```
 carcosa -A token-name-here
 ```
-*carcosa* will then read input secret from STDIN. Once you are done typing hit `CTRL+D` to send EOF. This will store your secret under token `token-name-here` in $HOME/.secrets/ unless a custom path to repository is specified.
+
+*carcosa* will then read input secret from `stdin`. Once you are done typing
+hit `CTRL+D` to send EOF.
+
+This will store your secret under token `token-name-here` in `$HOME/.secrets/`
+unless a custom path to repository is specified.
 
 ### Listing secrets
 
@@ -57,6 +69,7 @@ want to sync it before, use `-y` flag:
 ```
 carcosa -Ly
 ```
+
 ### Getting secret by token
 
 ```
@@ -70,11 +83,11 @@ can specify flag `-y`
 
 
 ### Sync your tokens/secrets to remote
-You can either set remote to your *carcosa* git repository, via `git remote add` or specify remote every
-time via `-r` flag.
+
+You can either set remote to your *carcosa* git repository, via `git remote
+add` or specify remote every time via `-r` flag.
 
 ```
-git init
 carcosa -Sr git://path.to/remote.git
 ```
 
@@ -90,10 +103,6 @@ Then you can sync it remote any time using `-S` flag:
 ```
 carcosa -S
 ```
-
-
-
-
 
 ## Advanced usage
 
