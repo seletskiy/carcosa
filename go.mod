@@ -12,7 +12,7 @@ require (
 	github.com/reconquest/loreley v0.0.0-20190408221007-9e95b93c818f // indirect
 	github.com/stretchr/testify v1.3.0
 	github.com/zazab/zhash v0.0.0-20170403032415-ad45b89afe7a // indirect
-	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
+	golang.org/x/crypto v0.1.0
 	golang.org/x/exp v0.0.0-20200119233911-0405dc783f0a
 	gonum.org/v1/gonum v0.6.2
 	gopkg.in/src-d/go-git.v4 v4.13.1
