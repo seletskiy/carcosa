@@ -57,6 +57,7 @@ Usage:
     carcosa [options] [-v]... -L [-a=]... [-c] [-y]
     carcosa [options] [-v]... -R [-a=]... [-c] [-n] <token>
     carcosa [options] [-v]... -F -c
+    carcosa [options] [-v]... --recover-master [-c]
 
 Options:
     -h --help          Show this help.
@@ -73,6 +74,11 @@ Options:
     -R --remove        Remove secret by specified token.
     -F --keycheck      Check that master password cache presents and exit if it is
                         not. Suitable for scripting purposes.
+    --recover-master  Recover cached master password to stdout as plaintext,
+                        without an added newline. No prompt, cache writes, or
+                        sync. Requires cache encryption key; -c is not required.
+                        Use -p, -f, -x to select repo path, cache directory, key.
+                        Cannot be combined with -k. Protect redirected output.
     -s <ref-ns>        Use specified ref namespace.
                         [default: refs/tokens/]
     -p <path>          Set git repo path to store secrets in.

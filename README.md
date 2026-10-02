@@ -117,6 +117,35 @@ carcosa -Lc  # enter master key once
 carcosa -Lc  # use carcosa without entering master key
 ```
 
+### Recovering master password from cache
+
+Use `--recover-master` to decrypt the cached master password and write its exact
+bytes to stdout, without an added newline. This exposes the plaintext password;
+use a private output file instead of displaying it in a terminal or logs:
+
+```sh
+(
+    umask 077
+    set -C
+    carcosa --recover-master -p /original/absolute/repo/path > recovered-master.key
+)
+```
+
+`set -C` prevents overwriting an existing output file. Check the exit status before
+using the recovered file. It can be supplied to carcosa using `-k`.
+
+Back up the cache and its encryption key first. Defaults are
+`~/.cache/carcosa/master/` and `/etc/machine-id`; use `-f` and `-x` for custom
+locations. Recovery requires the original encryption key contents. The cache is
+looked up using the absolute repository path, so use the same path as when it was
+created, even if the repository no longer exists there.
+
+Recovery does not require `-c`, prompt for a password, create or modify cache
+entries, load SSH credentials, or access/sync the repository. Missing or empty
+cache entries, read errors, truncated cache headers, and encryption-key/signature
+mismatches cause an error. `-k` cannot be combined with `--recover-master`;
+recovery always reads from the cache.
+
 ### Using UI
 
 Sample dmenu-based UI available at: https://github.com/deadcrew/deadfiles/blob/master/bin/carcosa-ui

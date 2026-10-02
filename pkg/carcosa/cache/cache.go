@@ -87,7 +87,9 @@ func (cache *Cache) Get(repo string) ([]byte, error) {
 		return nil, nil
 	}
 
-	if len(data) <= cache.core.Hash.Size {
+	// A record must contain the encrypted token, IV, and signature before
+	// Decrypt can safely split it into fields. The payload may be empty.
+	if len(data) < 2*cache.core.Hash.Size+cache.core.Block.Size {
 		return nil, karma.
 			Describe("len", len(data)).
 			Reason("encrypted master key record is too short")

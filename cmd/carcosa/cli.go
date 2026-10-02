@@ -19,15 +19,16 @@ type Opts struct {
 	ArgNewToken string `docopt:"<new-token>"`
 	ArgURL      string `docopt:"<url>"`
 
-	ModeInit     bool `docopt:"--init"`
-	ModeSync     bool `docopt:"--sync"`
-	ModeAdd      bool `docopt:"--add"`
-	ModeEdit     bool `docopt:"--edit"`
-	ModeGet      bool `docopt:"--get"`
-	ModeList     bool `docopt:"--list"`
-	ModeRemove   bool `docopt:"--remove"`
-	ModeKeycheck bool `docopt:"--keycheck"`
-	ModeMove     bool `docopt:"--move"`
+	ModeInit          bool `docopt:"--init"`
+	ModeSync          bool `docopt:"--sync"`
+	ModeAdd           bool `docopt:"--add"`
+	ModeEdit          bool `docopt:"--edit"`
+	ModeGet           bool `docopt:"--get"`
+	ModeList          bool `docopt:"--list"`
+	ModeRemove        bool `docopt:"--remove"`
+	ModeKeycheck      bool `docopt:"--keycheck"`
+	ModeRecoverMaster bool `docopt:"--recover-master"`
+	ModeMove          bool `docopt:"--move"`
 
 	ValueNamespace       string   `docopt:"-s"`
 	ValuePath            string   `docopt:"-p"`
@@ -50,6 +51,11 @@ type cli struct {
 }
 
 func (cli *cli) run(opts Opts) error {
+	// Recovery only needs the cache, not SSH credentials or repository access.
+	if opts.ModeRecoverMaster {
+		return cli.recoverMaster(opts, os.Stdout)
+	}
+
 	auth := auth.New()
 
 	for _, definition := range opts.ValueAuth {
@@ -339,6 +345,33 @@ func (cli *cli) list(opts Opts) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (cli *cli) recoverMaster(opts Opts, output io.Writer) error {
+	if opts.ValueMasterFile != "" {
+		return fmt.Errorf("--recover-master cannot be used with -k")
+	}
+
+	// Do not use cli.key: its cache-miss fallback prompts and writes the cache.
+	master, err := cli.cache.Get(opts.ValuePath)
+	if err != nil {
+		return karma.Format(err, "unable to recover master password from cache")
+	}
+
+	if len(master) == 0 {
+		return fmt.Errorf("master password cache is missing or empty")
+	}
+
+	// Preserve every byte, including whitespace, for use with -k.
+	n, err := output.Write(master)
+	if err == nil && n != len(master) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		return karma.Format(err, "unable to output recovered master password")
 	}
 
 	return nil
